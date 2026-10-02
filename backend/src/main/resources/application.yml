@@ -1,0 +1,95 @@
+# Customer Trace — API configuration.
+#
+# Every value that differs per environment is read from an environment variable. Secrets are
+# NEVER committed: the application refuses to start with a placeholder JWT secret unless the
+# dev profile is active (see JwtProperties validation).
+
+spring:
+  application:
+    name: customer-trace-api
+
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3307/customertrace?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${DB_USERNAME:ct}
+    password: ${DB_PASSWORD:ctpw}
+    hikari:
+      # Keeps the pool small enough for local Docker runs; raise for production.
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      connection-timeout: 20000
+
+  jpa:
+    # Flyway owns the schema; Hibernate must never mutate it.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        jdbc:
+          time_zone: UTC
+          batch_size: 30
+        order_inserts: true
+        order_updates: true
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    # Never clean or drop an existing database automatically.
+    clean-disabled: true
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+  api-docs:
+    path: /v3/api-docs
+
+# ── Application settings ────────────────────────────────────────────────────────
+customer-trace:
+  security:
+    # Must be >= 32 chars. Injected from the environment; no production default.
+    jwt-secret: ${JWT_SECRET:}
+    access-token-ttl: ${JWT_ACCESS_TTL:PT15M}
+    refresh-token-ttl: ${JWT_REFRESH_TTL:P7D}
+    # Issuer/audience claims, verified on every token.
+    issuer: ${JWT_ISSUER:customer-trace-api}
+    # Cookie settings for the refresh token. `secure` MUST be true behind HTTPS in production.
+    refresh-cookie-name: ct_refresh
+    refresh-cookie-secure: ${REFRESH_COOKIE_SECURE:false}
+    refresh-cookie-same-site: ${REFRESH_COOKIE_SAMESITE:Lax}
+    # Brute-force protection: consecutive failures before the account is locked.
+    max-failed-attempts: ${AUTH_MAX_FAILED:5}
+    lockout-duration: ${AUTH_LOCKOUT:PT15M}
+  cors:
+    # Explicit origin allow-list. Never "*" with credentials.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  bootstrap:
+    # Seed the roles/plans baseline. This is reference data, not user credentials.
+    enabled: ${BOOTSTRAP_ENABLED:true}
+
+logging:
+  level:
+    root: INFO
+    com.customertrace: ${LOG_LEVEL:INFO}
+    org.springframework.security: WARN
