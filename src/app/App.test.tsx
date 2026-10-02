@@ -8,6 +8,7 @@
  */
 
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
 import App from '@/app/App';
@@ -61,5 +62,51 @@ describe('App routing', () => {
     // A nested <BrowserRouter> throws during render. If that regresses, this fails loudly
     // instead of silently producing a blank page.
     expect(() => renderAt('/')).not.toThrow();
+  });
+});
+
+describe('portal-selection navigation', () => {
+  // Regression: with a portal active, "/" was not registered, so it matched the catch-all
+  // and rendered NotFound. NotFound's "Back to portal selection" link points at "/", so
+  // clicking it re-rendered NotFound — an inescapable dead end.
+  it('shows the portal-selection screen at "/" while a portal is active', () => {
+    useAppStore.getState().setPortal('admin');
+    renderAt('/');
+
+    expect(screen.getByRole('button', { name: /admin/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /restaurant/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /creator/i })).toBeInTheDocument();
+    expect(screen.queryByText(/that screen does not exist/i)).not.toBeInTheDocument();
+  });
+
+  it('"Back to portal selection" returns from NotFound to the role screen', async () => {
+    const user = userEvent.setup();
+    useAppStore.getState().setPortal('admin');
+    renderAt('/admin/nope');
+
+    expect(screen.getByText(/that screen does not exist/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('link', { name: /back to portal selection/i }));
+
+    expect(screen.queryByText(/that screen does not exist/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /creator/i })).toBeInTheDocument();
+  });
+
+  it('"Back to portal selection" works from a stale route in every portal', async () => {
+    const user = userEvent.setup();
+
+    for (const portal of ['restaurant', 'creator'] as const) {
+      // Activate the portal BEFORE rendering, otherwise the signed-out branch renders
+      // RoleSelect for the stale path and there is no NotFound link to click.
+      useAppStore.getState().setPortal(portal);
+      const view = renderAt(`/${portal}/nope`);
+
+      expect(screen.getByText(/that screen does not exist/i)).toBeInTheDocument();
+      await user.click(screen.getByRole('link', { name: /back to portal selection/i }));
+
+      expect(screen.queryByText(/that screen does not exist/i)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /admin/i })).toBeInTheDocument();
+      view.unmount();
+    }
   });
 });

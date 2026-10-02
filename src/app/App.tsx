@@ -56,6 +56,11 @@ function Shell() {
 
   return (
     <Routes>
+      {/* The portal-selection URL must stay registered even while a portal is active.
+          Otherwise "/" falls through to the catch-all below, and NotFound's
+          "Back to portal selection" link — which points at "/" — would navigate straight
+          back into NotFound, a dead end the user cannot escape. */}
+      <Route path="/" element={<RoleSelect />} />
       <Route element={<PortalLayout />}>
         <Route path="/admin" element={<AdminOverview />} />
         <Route path="/admin/campaigns" element={<AdminCampaigns />} />
