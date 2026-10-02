@@ -1,64 +1,44 @@
+import { Link } from 'react-router-dom';
+
+import { Callout } from '@/app/ui';
+
 /**
- * Role selection — the entry point.
+ * Portal selection — the entry point.
  *
- * Mirrors the Stitch "role selection" screen. Choosing Admin needs no identity; the
- * Restaurant and Creator portals must pick *which* one, because every downstream query is
- * scoped to that id and silently defaulting to the first record would look like a bug.
+ * <p>Exactly three buttons, each opening that portal's own sign-in page. There are deliberately
+ * no restaurant or creator pickers here: identity is established by signing in, so the account
+ * is proven by the backend rather than asserted by this screen.
  */
-
-import { useNavigate } from 'react-router-dom';
-
-import { useAppStore } from '@/app/store';
-import { Callout, inputClass } from '@/app/ui';
-import type { Portal } from '@/types/models';
-
 const PORTALS = [
   {
-    id: 'admin' as const,
-    title: 'Admin',
-    subtitle: 'Governance, approvals & platform health',
+    id: 'trynearby' as const,
+    title: 'TryNearby',
+    subtitle: 'Platform governance, campaign approvals and oversight.',
     icon: 'shield',
     iconClass: 'bg-secondary-container text-secondary',
-    route: '/admin',
-    needsIdentity: false,
   },
   {
     id: 'restaurant' as const,
     title: 'Restaurant',
-    subtitle: 'Partners, offers, scans & redemptions',
+    subtitle: 'Campaign requests, QR scans, redemptions and reports.',
     icon: 'restaurant',
-    iconClass: 'bg-secondary-container text-secondary',
-    route: '/restaurant',
-    needsIdentity: true,
+    iconClass: 'bg-tertiary-container text-on-tertiary-fixed-variant',
   },
   {
     id: 'creator' as const,
     title: 'Creator',
-    subtitle: 'Campaigns, QR passes & analytics',
+    subtitle: 'Create campaigns, track approvals and see performance.',
     icon: 'campaign',
-    iconClass: 'bg-tertiary-fixed text-tertiary',
-    route: '/creator',
-    needsIdentity: true,
+    iconClass: 'bg-primary-fixed text-on-primary-fixed-variant',
   },
 ];
 
+
 export function RoleSelect() {
-  const navigate = useNavigate();
-  const db = useAppStore((s) => s.db);
-  const setPortal = useAppStore((s) => s.setPortal);
-  const resetDemo = useAppStore((s) => s.resetDemo);
-
-  const enter = (portal: Portal, id?: string) => {
-    if (portal === 'restaurant' && id) setPortal(portal, { restaurantId: id });
-    else if (portal === 'creator' && id) setPortal(portal, { creatorId: id });
-    else setPortal(portal);
-    navigate(PORTALS.find((p) => p.id === portal)?.route ?? '/');
-  };
-
   return (
     <main className="min-h-screen bg-background">
       <a href="#portal-picker" className="ct-skip-link">
-        Skip to portal picker
+        Skip to portal selection
       </a>
 
       <div className="ct-canvas max-w-lg px-gutter py-margin-lg">
@@ -67,117 +47,54 @@ export function RoleSelect() {
             Customer Trace
           </p>
           <h1 className="mt-2 font-display-md text-display-md text-on-surface">
-            Who are you signing in as?
+            Choose your portal
           </h1>
           <p className="mx-auto mt-2 max-w-xs font-body-md text-body-md text-on-surface-variant">
-            Pick a portal to continue. Everything is seeded locally — no account needed.
+            Sign in with the User ID issued to you. Each account belongs to exactly one portal.
           </p>
         </header>
 
         <div id="portal-picker" className="space-y-space-md">
           {PORTALS.map((portal) => (
-            <section key={portal.id} className="space-y-space-sm">
-              <button
-                type="button"
-                onClick={() => {
-                  if (portal.needsIdentity) return;
-                  enter(portal.id);
-                }}
-                disabled={portal.needsIdentity}
-                className={`w-full flex items-center justify-between p-space-lg rounded-xl text-left
-                  shadow-elevate-medium active:scale-[0.99] transition-all duration-200 group
-                  ${
-                    portal.needsIdentity
-                      ? 'bg-surface-container-lowest text-on-surface border border-outline-variant/30 hover:bg-surface-container-high shadow-elevate-low'
-                      : 'bg-primary text-on-primary hover:bg-tertiary-container'
-                  }`}
+            <Link
+              key={portal.id}
+              to={`/signin/${portal.id}`}
+              className="group flex items-center gap-space-md rounded-xl border border-outline-variant/30
+                bg-surface-container-lowest p-space-lg shadow-elevate-low transition-all
+                hover:border-primary hover:bg-surface-container-high active:scale-[0.99]"
+            >
+              <span
+                className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${portal.iconClass}`}
               >
-                <span className="flex items-center gap-space-md">
-                  <span
-                    className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                      portal.needsIdentity
-                        ? portal.iconClass
-                        : 'bg-surface/20 text-on-primary'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[28px]" aria-hidden="true">
-                      {portal.icon}
-                    </span>
-                  </span>
-                  <span className="flex flex-col">
-                    <span className="font-headline-sm text-headline-sm font-bold">
-                      {portal.title}
-                    </span>
-                    <span
-                      className={`text-body-sm text-body-sm ${
-                        portal.needsIdentity ? 'text-on-surface-variant' : 'text-on-primary/80'
-                      }`}
-                    >
-                      {portal.subtitle}
-                    </span>
-                  </span>
+                <span className="material-symbols-outlined text-[28px]" aria-hidden="true">
+                  {portal.icon}
                 </span>
-                {!portal.needsIdentity ? (
-                  <span
-                    className="material-symbols-outlined text-[24px] group-hover:translate-x-1 transition-transform"
-                    aria-hidden="true"
-                  >
-                    arrow_forward
-                  </span>
-                ) : null}
-              </button>
-
-              {portal.needsIdentity ? (
-                <label className="block">
-                  <span className="sr-only">Choose a {portal.title.toLowerCase()}</span>
-                  <select
-                    className={inputClass}
-                    value=""
-                    onChange={(event) => {
-                      if (event.target.value) enter(portal.id, event.target.value);
-                    }}
-                  >
-                    <option value="">
-                      {portal.id === 'restaurant'
-                        ? 'Choose a restaurant…'
-                        : 'Choose a creator…'}
-                    </option>
-                    {portal.id === 'restaurant'
-                      ? db.restaurants.map((r) => (
-                          <option key={r.id} value={r.id}>
-                            {r.name} · {r.city}
-                          </option>
-                        ))
-                      : db.creators.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.displayName} · @{c.handle}
-                          </option>
-                        ))}
-                  </select>
-                </label>
-              ) : null}
-            </section>
+              </span>
+              <span className="flex flex-col">
+                <span className="font-headline-sm text-headline-sm font-bold text-on-surface">
+                  {portal.title}
+                </span>
+                <span className="font-body-sm text-body-sm text-on-surface-variant">
+                  {portal.subtitle}
+                </span>
+              </span>
+              <span
+                className="material-symbols-outlined text-[24px] text-on-surface-variant ml-auto
+                  group-hover:translate-x-1 transition-transform"
+                aria-hidden="true"
+              >
+                arrow_forward
+              </span>
+            </Link>
           ))}
         </div>
 
-        <div className="mt-space-xl space-y-space-md">
+        <div className="mt-space-xl">
           <Callout tone="info">
             <strong className="font-label-md">How the data works.</strong> A QR scan is
             <em> interest</em>, not a sale. Only a redemption recorded at the till counts as a
             verified customer — which is why the funnel numbers differ at every step.
           </Callout>
-
-          <button
-            type="button"
-            onClick={() => {
-              resetDemo();
-              navigate('/');
-            }}
-            className="w-full text-center font-label-sm text-label-sm text-on-surface-variant
-              hover:text-primary transition-colors"
-          >
-            Reset demo data
-          </button>
         </div>
       </div>
     </main>

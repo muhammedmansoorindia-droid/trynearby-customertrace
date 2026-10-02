@@ -10,7 +10,12 @@
  * Dates are ISO 8601 strings; campaign start/end are date-only (`YYYY-MM-DD`).
  */
 
-export type Portal = 'admin' | 'restaurant' | 'creator';
+/**
+ * Portal identifier.
+ *
+ * <p>`trynearby` is the administrator workspace; the product itself is Customer Trace.
+ */
+export type Portal = 'trynearby' | 'restaurant' | 'creator';
 
 /** Who the user is acting as. No real auth in the demo — chosen at the role screen. */
 export interface Session {

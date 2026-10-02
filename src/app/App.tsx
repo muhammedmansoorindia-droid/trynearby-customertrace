@@ -12,6 +12,7 @@ import { Route, Routes, useLocation } from 'react-router-dom';
 
 import { useAppStore } from '@/app/store';
 import { RoleSelect } from '@/app/RoleSelect';
+import { SignIn } from '@/app/SignIn';
 import { PortalLayout } from '@/app/PortalLayout';
 import { AdminOverview } from '@/app/admin/AdminOverview';
 import { AdminCampaigns } from '@/app/admin/AdminCampaigns';
@@ -49,6 +50,14 @@ function Shell() {
   if (!portal) {
     return (
       <Routes>
+        <Route path="/" element={<RoleSelect />} />
+        {/* Portal-specific sign-in. Each portal has its own page so the suffix hint and
+            the expected role are unambiguous. */}
+        <Route path="/signin/trynearby" element={<SignIn portal="trynearby" />} />
+        <Route path="/signin/restaurant" element={<SignIn portal="restaurant" />} />
+        <Route path="/signin/creator" element={<SignIn portal="creator" />} />
+        {/* Anything else while signed out falls back to portal selection rather than a
+            dead-end NotFound screen. */}
         <Route path="*" element={<RoleSelect />} />
       </Routes>
     );
@@ -61,9 +70,16 @@ function Shell() {
           "Back to portal selection" link — which points at "/" — would navigate straight
           back into NotFound, a dead end the user cannot escape. */}
       <Route path="/" element={<RoleSelect />} />
+
+      {/* Portal-specific sign-in. Each portal has its own page so the suffix hint and
+          the expected role are unambiguous. */}
+      <Route path="/signin/trynearby" element={<SignIn portal="trynearby" />} />
+      <Route path="/signin/restaurant" element={<SignIn portal="restaurant" />} />
+      <Route path="/signin/creator" element={<SignIn portal="creator" />} />
+
       <Route element={<PortalLayout />}>
-        <Route path="/admin" element={<AdminOverview />} />
-        <Route path="/admin/campaigns" element={<AdminCampaigns />} />
+        <Route path="/trynearby" element={<AdminOverview />} />
+        <Route path="/trynearby/campaigns" element={<AdminCampaigns />} />
         <Route path="/restaurant" element={<RestaurantDashboard />} />
         <Route path="/restaurant/campaigns" element={<RestaurantCampaigns />} />
         <Route path="/restaurant/scan" element={<RestaurantScanner />} />

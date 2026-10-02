@@ -13,9 +13,9 @@ import { cn } from '@/utils';
 import type { Portal } from '@/types/models';
 
 const NAV: Record<Exclude<Portal, null>, Array<{ to: string; label: string; icon: string }>> = {
-  admin: [
-    { to: '/admin', label: 'Overview', icon: 'dashboard' },
-    { to: '/admin/campaigns', label: 'Campaigns', icon: 'approval' },
+  trynearby: [
+    { to: '/trynearby', label: 'Overview', icon: 'dashboard' },
+    { to: '/trynearby/campaigns', label: 'Campaigns', icon: 'approval' },
   ],
   restaurant: [
     { to: '/restaurant', label: 'Dashboard', icon: 'dashboard' },

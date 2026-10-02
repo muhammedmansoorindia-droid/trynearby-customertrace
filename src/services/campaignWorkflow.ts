@@ -32,11 +32,11 @@ export type CampaignAction =
 /** Which portal may perform each action. */
 const ACTION_OWNER: Record<CampaignAction, Portal> = {
   submit: 'creator',
-  approve: 'admin',
-  reject: 'admin',
+  approve: 'trynearby',
+  reject: 'trynearby',
   go_live: 'creator',
-  complete: 'admin',
-  cancel: 'admin',
+  complete: 'trynearby',
+  cancel: 'trynearby',
   reopen: 'creator',
 };
 

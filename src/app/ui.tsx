@@ -119,13 +119,15 @@ export function Callout({
   tone,
   children,
 }: {
-  tone: 'info' | 'error' | 'success';
+  tone: 'info' | 'error' | 'success' | 'warning';
   children: ReactNode;
 }) {
   const tones = {
     info: 'bg-surface-container-high text-on-surface border-outline-variant/40',
     error: 'bg-error-container text-on-error-container border-error/25',
     success: 'bg-secondary-container text-on-secondary-fixed border-secondary/25',
+    // Warm tertiary palette, matching the Stitch design, for connection warnings.
+    warning: 'bg-tertiary-container text-on-tertiary-fixed-variant border-tertiary/25',
   } as const;
 
   return (

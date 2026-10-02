@@ -465,7 +465,7 @@ function buildNotifications(now: Date): AppNotification[] {
     {
       id: 'ntf_1',
       type: 'campaign_submitted',
-      audience: 'admin',
+      audience: 'trynearby',
       recipientId: null,
       title: 'New campaign awaiting approval',
       body: 'Neha Shetty submitted “Sunday Brunch Club” for The Purple Haze.',

@@ -32,20 +32,20 @@ describe('App routing', () => {
 
     // RoleSelect renders three portal cards; assert on its landmarks.
     expect(screen.getByRole('main')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /admin/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /restaurant/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /creator/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /TryNearby/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /restaurant/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /creator/i })).toBeInTheDocument();
   });
 
   it('renders the role-selection screen at any unmatched path while signed out', () => {
     // Signed out, every route falls through to RoleSelect via <Route path="*" />.
     renderAt('/does-not-exist');
-    expect(screen.getByRole('button', { name: /creator/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /creator/i })).toBeInTheDocument();
   });
 
   it('mounts the portal shell on an active portal route', () => {
-    useAppStore.getState().setPortal('admin');
-    renderAt('/admin');
+    useAppStore.getState().setPortal('trynearby');
+    renderAt('/trynearby');
 
     expect(screen.getByRole('banner')).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: /primary/i })).toBeInTheDocument();
@@ -53,8 +53,8 @@ describe('App routing', () => {
   });
 
   it('shows NotFound for an unknown route inside an active portal', () => {
-    useAppStore.getState().setPortal('admin');
-    renderAt('/admin/nope');
+    useAppStore.getState().setPortal('trynearby');
+    renderAt('/trynearby/nope');
     expect(screen.getByText(/that screen does not exist/i)).toBeInTheDocument();
   });
 
@@ -70,26 +70,26 @@ describe('portal-selection navigation', () => {
   // and rendered NotFound. NotFound's "Back to portal selection" link points at "/", so
   // clicking it re-rendered NotFound — an inescapable dead end.
   it('shows the portal-selection screen at "/" while a portal is active', () => {
-    useAppStore.getState().setPortal('admin');
+    useAppStore.getState().setPortal('trynearby');
     renderAt('/');
 
-    expect(screen.getByRole('button', { name: /admin/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /restaurant/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /creator/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /TryNearby/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /restaurant/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /creator/i })).toBeInTheDocument();
     expect(screen.queryByText(/that screen does not exist/i)).not.toBeInTheDocument();
   });
 
   it('"Back to portal selection" returns from NotFound to the role screen', async () => {
     const user = userEvent.setup();
-    useAppStore.getState().setPortal('admin');
-    renderAt('/admin/nope');
+    useAppStore.getState().setPortal('trynearby');
+    renderAt('/trynearby/nope');
 
     expect(screen.getByText(/that screen does not exist/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('link', { name: /back to portal selection/i }));
 
     expect(screen.queryByText(/that screen does not exist/i)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /creator/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /creator/i })).toBeInTheDocument();
   });
 
   it('"Back to portal selection" works from a stale route in every portal', async () => {
@@ -105,7 +105,7 @@ describe('portal-selection navigation', () => {
       await user.click(screen.getByRole('link', { name: /back to portal selection/i }));
 
       expect(screen.queryByText(/that screen does not exist/i)).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /admin/i })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /TryNearby/i })).toBeInTheDocument();
       view.unmount();
     }
   });
