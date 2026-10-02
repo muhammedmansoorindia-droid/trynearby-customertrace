@@ -385,6 +385,10 @@ export function validateTierOwnership(
   month: string,
   ledger: Pick<PromoCodeLedger, 'records'>,
 ): PromoCodeResult<true> {
+  // The tier's own availability was already proven at mint time by `generatePromoCode`, so
+  // `ledger` is accepted for call-site symmetry with the rest of the validation ladder but is
+  // not re-checked here — a later, unrelated mint must not retroactively invalidate this code.
+  void ledger;
   if (record.restaurantId !== restaurantId) return fail('UNKNOWN_CODE');
   if (record.exclusive && record.monthKey !== month) return fail('TIER_MONTHLY_LIMIT');
   return { ok: true, value: true };

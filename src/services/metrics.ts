@@ -198,64 +198,6 @@ export function selectRestaurantMetrics(
     activeCampaignCount: campaigns.filter((c) => c.status === 'live' || c.status === 'approved')
       .length,
     totalScans: scans.length,
-/**
- * Platform-wide totals.
- *
- * Every figure is summed from the same underlying records the per-entity selectors read, so
- * the admin dashboard cannot disagree with a campaign report.
- */
-export function selectPlatformMetrics(data: DataSet): PlatformMetrics {
-  const validScans = data.scans.filter((s) => s.result === 'valid');
-
-  return {
-    restaurantCount: data.restaurants.length,
-    activeRestaurantCount: data.restaurants.filter((r) => r.status === 'active').length,
-    creatorCount: data.creators.length,
-    creatorVerifiedCustomers: new Set(data.redemptions.map((r, i) => customerIdentity(r, i))).size,
-    campaignCount: data.campaigns.length,
-    activeCampaignCount: data.campaigns.filter(isLiveStatus).length,
-    pendingApprovalCount: data.campaigns.filter((c) => c.status === 'pending_admin').length,
-    totalBookings: data.bookings.length,
-    totalScans: validScans.length,
-    totalRedemptions: data.redemptions.length,
-    totalVerifiedCustomers: new Set(data.redemptions.map((r, i) => customerIdentity(r, i))).size,
-    discountProvidedInPaise: data.redemptions.reduce((s, r) => s + r.discountAmountInPaise, 0),
-    revenueInfluencedInPaise: data.redemptions.reduce((s, r) => s + r.billAmountInPaise, 0),
-    saasRevenueInPaise: data.subscriptions
-      .filter((s) => s.status === 'active')
-      .reduce((s, x) => s + x.amountInPaise, 0),
-  };
-}
-
-// ── Derived entity attributes ──────────────────────────────────────────
-
-/**
- * Total customers a creator has generated across every campaign.
- *
- * One diner visiting two of a creator's campaigns is still one customer.
- */
-export function selectCreatorCustomersGenerated(
-  creatorId: string,
-  data: Pick<DataSet, 'campaigns' | 'redemptions'>,
-): number {
-  const ids = new Set(data.campaigns.filter((c) => c.creatorId === creatorId).map((c) => c.id));
-  const redemptions = data.redemptions.filter((r) => ids.has(r.campaignId));
-  return new Set(redemptions.map((r, i) => customerIdentity(r, i))).size;
-}
-
-/**
- * Active when approved/live and the window has not closed.
- * A campaign past its end date reports inactive regardless of stored status.
- */
-export function isCampaignActive(campaign: Campaign, today: string): boolean {
-  if (!isLiveStatus(campaign.status)) return false;
-  return today <= campaign.endDate;
-}
-
-/** Statuses that count as "live or in flight" on a dashboard tile. */
-export function isLiveStatus(status: Campaign['status']): boolean {
-  return status === 'live' || status === 'approved';
-}
     redemptions: redemptions.length,
     verifiedCustomers: new Set(redemptions.map((r, i) => customerIdentity(r, i))).size,
     discountProvidedInPaise: redemptions.reduce((s, r) => s + r.discountAmountInPaise, 0),
@@ -264,6 +206,9 @@ export function isLiveStatus(status: Campaign['status']): boolean {
     averageRating,
   };
 }
+
+/**
+ * Stable identity for a diner.
  *
  * Redemptions carry an anonymous `customerRef`; where it is missing (an unidentified walk-in)
  * each redemption is treated as its own customer — the conservative choice, since it can never

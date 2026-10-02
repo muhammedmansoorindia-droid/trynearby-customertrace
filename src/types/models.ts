@@ -198,8 +198,6 @@ export interface PromoCodeRecord {
 
 export type RestaurantStatus = 'active' | 'paused' | 'suspended';
 
-export type RestaurantStatus = 'active' | 'paused' | 'suspended';
-
 export interface Restaurant {
   id: string;
   name: string;
