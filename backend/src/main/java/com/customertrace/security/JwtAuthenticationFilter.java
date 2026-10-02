@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.List;
 
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -59,7 +60,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String userIdName = claims.get(JwtService.CLAIM_USER_ID_NAME, String.class);
         Object rawRoles = claims.get(JwtService.CLAIM_ROLES);
 
-        List<SimpleGrantedAuthority> authorities = new java.util.ArrayList<>();
+        // Declared as the authority supertype so it matches CurrentUser's constructor exactly.
+        List<GrantedAuthority> authorities = new java.util.ArrayList<>();
         if (rawRoles instanceof List<?> roles) {
             for (Object role : roles) {
                 if (role != null) {
@@ -71,8 +73,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         CurrentUser principal = new CurrentUser(userId.longValue(), userIdName, authorities);
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(principal, null, authorities);
-        // Mark authenticated: the credentials are a verified JWT signature, not a password.
-        authentication.setDetails(request.getRemoteAddr());
+        // The credentials are a verified JWT signature, not a password.
+        authentication.setDetails("jwt");
         SecurityContextHolder.getContext().setAuthentication(authentication);
     }
 }

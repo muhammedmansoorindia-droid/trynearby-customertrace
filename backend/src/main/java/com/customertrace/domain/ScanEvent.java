@@ -34,7 +34,7 @@ public class ScanEvent {
     @Column(name = "method", nullable = false, length = 16)
     private String method;
 
-    @Column(name = "promo_code", nullable = false, length = 7)
+    @Column(name = "promo_code", nullable = false, columnDefinition = "CHAR(7)")
     private String promoCode;
 
     @Column(name = "valid", nullable = false)

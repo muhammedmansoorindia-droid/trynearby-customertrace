@@ -28,7 +28,7 @@ public class PromoCode {
     @Column(name = "campaign_id", nullable = false)
     private Long campaignId;
 
-    @Column(name = "code", nullable = false, unique = true, length = 7)
+    @Column(name = "code", nullable = false, unique = true, columnDefinition = "CHAR(7)")
     private String code;
 
     @Column(name = "client_target", nullable = false)
@@ -37,7 +37,7 @@ public class PromoCode {
     @Column(name = "duration_days", nullable = false)
     private int durationDays;
 
-    @Column(name = "tier_letter", nullable = false, length = 1)
+    @Column(name = "tier_letter", nullable = false, columnDefinition = "CHAR(1)")
     private String tierLetter;
 
     @Column(name = "exclusive_tier", nullable = false)

@@ -9,7 +9,7 @@ spring:
     name: customer-trace-api
 
   datasource:
-    url: ${DB_URL:jdbc:mysql://localhost:3307/customertrace?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    url: ${DB_URL:jdbc:mysql://localhost:3399/customertrace?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
     username: ${DB_USERNAME:ct}
     password: ${DB_PASSWORD:ctpw}
     hikari:
@@ -85,8 +85,11 @@ customer-trace:
     # Explicit origin allow-list. Never "*" with credentials.
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
   bootstrap:
-    # Seed the roles/plans baseline. This is reference data, not user credentials.
-    enabled: ${BOOTSTRAP_ENABLED:true}
+    # Seeds the role reference data always. Development ACCOUNTS are only created when this is
+    # true AND a DEV_ACCOUNT_PASSWORD is supplied — there is no built-in default password, so a
+    # production deployment can never end up with a predictable account.
+    enabled: ${BOOTSTRAP_ENABLED:false}
+    dev-account-password: ${DEV_ACCOUNT_PASSWORD:}
 
 logging:
   level:

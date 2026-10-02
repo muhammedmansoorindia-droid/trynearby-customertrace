@@ -79,7 +79,7 @@ public class AuthService {
      *                                                disabled/locked account
      */
     @Transactional
-    public AuthDtos.LoginResponse login(AuthDtos.LoginRequest request, String ip) {
+    public IssuedTokens login(AuthDtos.LoginRequest request, String ip) {
         String userId = request.userId() == null ? "" : request.userId().trim();
 
         Optional<User> found = userRepository.findByUserIdIgnoreCase(userId);
@@ -163,14 +163,13 @@ public class AuthService {
         auditLogRepository.save(AuditLog.of(user.getId(), user.getUserId(), "LOGIN_FAILED",
                 "USER", user.getId(), "Failed sign-in attempt " + failures, ip));
     }
-        this.refreshTokenRepository = refreshTokenRepository;
-        this.restaurantRepository = restaurantRepository;
-        this.creatorRepository = creatorRepository;
-        this.auditLogRepository = auditLogRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtService = jwtService;
-/** Issues the access token, persists the refresh hash, and assembles the response. */
-    private AuthDtos.LoginResponse issueTokens(User user) {
+/**
+     * Issues the access token, persists the refresh hash, and assembles the response.
+     *
+     * <p>The raw refresh token is returned so the caller can seal it into the HttpOnly cookie;
+     * it is never persisted in clear text and never returned in the JSON body.
+     */
+    private IssuedTokens issueTokens(User user) {
         List<String> roleCodes = List.copyOf(user.getRoleCodes());
         String accessToken = jwtService.createAccessToken(user.getId(), user.getUserId(), roleCodes);
 
@@ -183,9 +182,11 @@ public class AuthService {
         Long creatorId = creatorRepository.findByUserId(user.getId())
                 .map(Creator::getId).orElse(null);
 
-        return new AuthDtos.LoginResponse(accessToken, "Bearer",
-                jwtService.getAccessTokenTtlSeconds(), user.getUserId(), user.getDisplayName(),
-                roleCodes, restaurantId, creatorId);
+        return new IssuedTokens(
+                new AuthDtos.LoginResponse(accessToken, "Bearer",
+                        jwtService.getAccessTokenTtlSeconds(), user.getUserId(),
+                        user.getDisplayName(), roleCodes, restaurantId, creatorId),
+                refreshToken);
     }
 
     private void persistRefreshToken(User user, String rawToken, String familyId) {
@@ -205,7 +206,7 @@ public class AuthService {
      * theft and revokes the entire family.
      */
     @Transactional
-    public AuthDtos.LoginResponse refresh(String presentedToken, String ip) {
+    public IssuedTokens refresh(String presentedToken, String ip) {
         if (presentedToken == null || presentedToken.isBlank()) {
             throw ApiErrors.unauthorized("No refresh token was supplied.");
         }
@@ -249,9 +250,11 @@ public class AuthService {
         Long creatorId = creatorRepository.findByUserId(user.getId())
                 .map(Creator::getId).orElse(null);
 
-        return new AuthDtos.LoginResponse(accessToken, "Bearer",
-                jwtService.getAccessTokenTtlSeconds(), user.getUserId(), user.getDisplayName(),
-                roleCodes, restaurantId, creatorId);
+        return new IssuedTokens(
+                new AuthDtos.LoginResponse(accessToken, "Bearer",
+                        jwtService.getAccessTokenTtlSeconds(), user.getUserId(),
+                        user.getDisplayName(), roleCodes, restaurantId, creatorId),
+                newRefresh);
     }
 
     /**
@@ -301,5 +304,9 @@ public class AuthService {
 
     public SecurityProperties getSecurityProperties() {
         return securityProperties;
+    }
+
+    /** A freshly issued token pair: the API response plus the raw refresh token for the cookie. */
+    public record IssuedTokens(AuthDtos.LoginResponse response, String refreshToken) {
     }
 }

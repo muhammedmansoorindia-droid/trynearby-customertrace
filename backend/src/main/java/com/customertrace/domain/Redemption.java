@@ -42,7 +42,7 @@ public class Redemption {
     @Column(name = "promo_code_id", nullable = false)
     private Long promoCodeId;
 
-    @Column(name = "promo_code", nullable = false, length = 7)
+    @Column(name = "promo_code", nullable = false, columnDefinition = "CHAR(7)")
     private String promoCode;
 
     /** Null for a walk-in that never scanned. */

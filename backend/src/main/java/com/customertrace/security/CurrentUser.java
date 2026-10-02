@@ -15,8 +15,14 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
  */
 public record CurrentUser(Long userId, String userIdName, List<GrantedAuthority> authorities) {
 
+    /**
+     * Convenience constructor accepting any authority collection.
+     *
+     * <p>The explicit {@code List<GrantedAuthority>} witness is required: inferring from a
+     * {@code List<SimpleGrantedAuthority>} would not match the canonical record constructor.
+     */
     public CurrentUser(Long userId, String userIdName, Collection<GrantedAuthority> authorities) {
-        this(userId, userIdName, List.copyOf(authorities));
+        this(userId, userIdName, List.<GrantedAuthority>copyOf(authorities));
     }
 
     public boolean hasRole(String roleCode) {

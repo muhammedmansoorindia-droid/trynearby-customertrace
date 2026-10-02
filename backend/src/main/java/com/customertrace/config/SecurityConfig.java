@@ -87,7 +87,9 @@ public class SecurityConfig {
                         "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 // Creator discovery is available to restaurants and admin only.
-                .requestMatchers("/api/restaurants/**/creators", "/api/restaurants/**/creators/**")
+                // Ant-style MVC patterns do not allow "**" in the middle of a path, so the
+                // sub-resources use a trailing wildcard only.
+                .requestMatchers("/api/restaurants/*/creators", "/api/restaurants/*/creators/**")
                     .hasAnyRole("RESTAURANT", "ADMIN")
                 .requestMatchers("/api/restaurants/**").hasRole("RESTAURANT")
                 .requestMatchers("/api/creator/**").hasRole("CREATOR")

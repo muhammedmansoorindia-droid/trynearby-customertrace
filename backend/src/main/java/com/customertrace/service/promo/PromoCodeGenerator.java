@@ -1,5 +1,7 @@
 package com.customertrace.service.promo;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
@@ -118,11 +120,15 @@ public class PromoCodeGenerator {
      * created rather than failing outright.
      */
     private char pickTier() {
-        char[] unusedExclusive = java.util.Arrays.stream(EXCLUSIVE_TIERS)
-                .filter(t -> !exclusiveTierTakenChecker.getAsBoolean())
-                .toArray();
-        if (unusedExclusive.length > 0) {
-            return unusedExclusive[ThreadLocalRandom.current().nextInt(unusedExclusive.length)];
+        // A char[] has no stream(); iterate so each tier can be probed individually.
+        List<Character> unusedExclusive = new ArrayList<>();
+        for (char tier : EXCLUSIVE_TIERS) {
+            if (!exclusiveTierTakenChecker.getAsBoolean()) {
+                unusedExclusive.add(tier);
+            }
+        }
+        if (!unusedExclusive.isEmpty()) {
+            return unusedExclusive.get(ThreadLocalRandom.current().nextInt(unusedExclusive.size()));
         }
         return REUSABLE_TIERS[ThreadLocalRandom.current().nextInt(REUSABLE_TIERS.length)];
     }

@@ -1,4 +1,6 @@
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/CustomerTraceApplication.java
+/Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/bootstrap/BootstrapProperties.java
+/Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/bootstrap/DataSeeder.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/config/CorsProperties.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/config/SecurityConfig.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/domain/AuditLog.java
@@ -43,4 +45,5 @@
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/service/promo/ParsedPromoCode.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/service/promo/PromoCodeGenerator.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/service/promo/PromoCodeValidationException.java
+/Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/web/controller/AuthController.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/web/dto/AuthDtos.java

@@ -44,7 +44,7 @@ public class Restaurant {
     @Column(name = "phone", length = 40)
     private String phone;
 
-    @Column(name = "price_level", nullable = false)
+    @Column(name = "price_level", nullable = false, columnDefinition = "TINYINT")
     private int priceLevel = 2;
 
     @Column(name = "rating_sum", nullable = false)
