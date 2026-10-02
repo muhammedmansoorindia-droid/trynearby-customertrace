@@ -1,10 +1,12 @@
 package com.customertrace.repository;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import com.customertrace.domain.CampaignDecision;
+import com.customertrace.domain.DecisionParty;
 
 public interface CampaignDecisionRepository extends JpaRepository<CampaignDecision, Long> {
 
@@ -18,6 +20,7 @@ public interface CampaignDecisionRepository extends JpaRepository<CampaignDecisi
      */
     void deleteByCampaignId(Long campaignId);
 
-    void deleteByCampaignIdAndParty(Long campaignId,
-                                    com.customertrace.domain.DecisionParty party);
+    void deleteByCampaignIdAndParty(Long campaignId, DecisionParty party);
+
+    Optional<CampaignDecision> findByCampaignIdAndParty(Long campaignId, DecisionParty party);
 }

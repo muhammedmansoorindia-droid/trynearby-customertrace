@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.function.BooleanSupplier;
 
 import org.springframework.stereotype.Component;
 
@@ -43,20 +42,41 @@ public class PromoCodeGenerator {
 
     private static final int MAX_ATTEMPTS = 50;
 
-    /** Injected by the service layer: true when this code already exists. */
-    private BooleanSupplier codeExistsChecker = () -> false;
+    /**
+     * Probes, given a candidate code, whether it already exists.
+     *
+     * <p>A {@code Function} rather than a {@code BooleanSupplier} because the probe needs the
+     * candidate value. Left null, every candidate is considered available, which keeps the
+     * generator usable as a pure unit under test.
+     */
+    private java.util.function.Function<String, Boolean> codeExistsPredicate;
 
-    /** Injected by the service layer: true when an E-J tier is spent for restaurant+month. */
-    private BooleanSupplier exclusiveTierTakenChecker = () -> false;
+    /**
+     * Probes, given a tier letter, whether that E-J tier is already spent for this restaurant and
+     * calendar month.
+     */
+    private java.util.function.Function<Character, Boolean> tierTakenPredicate;
 
-    public PromoCodeGenerator withCodeExistsChecker(BooleanSupplier checker) {
-        this.codeExistsChecker = checker;
+    public PromoCodeGenerator withCodeExistsChecker(
+            java.util.function.Function<String, Boolean> checker) {
+        this.codeExistsPredicate = checker;
         return this;
     }
 
-    public PromoCodeGenerator withExclusiveTierTakenChecker(BooleanSupplier checker) {
-        this.exclusiveTierTakenChecker = checker;
+    public PromoCodeGenerator withExclusiveTierTakenChecker(
+            java.util.function.Function<Character, Boolean> checker) {
+        this.tierTakenPredicate = checker;
         return this;
+    }
+
+    /** True when the candidate code is already taken. */
+    private boolean codeTaken(String code) {
+        return codeExistsPredicate != null && Boolean.TRUE.equals(codeExistsPredicate.apply(code));
+    }
+
+    /** True when the exclusive tier is already spent for this restaurant and month. */
+    private boolean tierTaken(char tier) {
+        return tierTakenPredicate != null && Boolean.TRUE.equals(tierTakenPredicate.apply(tier));
     }
 
     /**
@@ -102,7 +122,7 @@ public class PromoCodeGenerator {
 
             for (int inner = 0; inner < MAX_ATTEMPTS; inner++) {
                 String code = randomLetters() + target + duration + tier;
-                if (!codeExistsChecker.getAsBoolean()) {
+                if (!codeTaken(code)) {
                     return code;
                 }
             }
@@ -123,7 +143,7 @@ public class PromoCodeGenerator {
         // A char[] has no stream(); iterate so each tier can be probed individually.
         List<Character> unusedExclusive = new ArrayList<>();
         for (char tier : EXCLUSIVE_TIERS) {
-            if (!exclusiveTierTakenChecker.getAsBoolean()) {
+            if (!tierTaken(tier)) {
                 unusedExclusive.add(tier);
             }
         }

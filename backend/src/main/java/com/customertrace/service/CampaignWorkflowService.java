@@ -9,10 +9,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.customertrace.domain.AuditLog;
 import com.customertrace.domain.Campaign;
+import com.customertrace.domain.CampaignDecision;
 import com.customertrace.domain.CampaignStatus;
 import com.customertrace.domain.Creator;
 import com.customertrace.domain.Decision;
 import com.customertrace.domain.DecisionParty;
+import com.customertrace.domain.Notification;
 import com.customertrace.domain.PromoCode;
 import com.customertrace.domain.Restaurant;
 import com.customertrace.exception.ApiErrors;
@@ -115,6 +117,9 @@ public class CampaignWorkflowService {
 
         Campaign saved = campaignRepository.save(campaign);
         recordHistory(saved, null, CampaignStatus.DRAFT, "Campaign created", actor);
+        return saved;
+    }
+
 /**
      * Submits a draft (or a previously rejected campaign) for review.
      *
@@ -247,12 +252,18 @@ public class CampaignWorkflowService {
         String calendarMonth = String.format("%04d-%02d", month.getYear(), month.getMonthValue());
 
         String code = promoCodeGenerator
-                .withCodeExistsChecker(promoCodeRepository::existsByCode)
+                // Explicit lambda: the target is BooleanSupplier, so the char is boxed here.
+                .withCodeExistsChecker(candidate -> promoCodeRepository.existsByCode(candidate))
                 .withExclusiveTierTakenChecker(tier ->
                         tierLedgerRepository.existsByRestaurantIdAndCalendarMonthAndTierLetter(
                                 campaign.getRestaurantId(), calendarMonth,
-                                String.valueOf(tier)))
+                                String.valueOf((char) tier)))
                 .generate(campaign.getTargetCustomers(), campaign.getDurationDays());
+
+        // A resubmission supersedes the previous code: replace rather than accumulate, so a
+        // campaign never carries two codes (the schema allows only one per campaign in practice).
+        promoCodeRepository.findByCampaignIdOrderByIdDesc(campaign.getId())
+                .forEach(promoCodeRepository::delete);
 
         PromoCode promo = new PromoCode();
         promo.setCampaignId(campaign.getId());
@@ -355,5 +366,3 @@ public class CampaignWorkflowService {
         notificationRepository.save(notification);
     }
 }
-        return saved;
-    }
