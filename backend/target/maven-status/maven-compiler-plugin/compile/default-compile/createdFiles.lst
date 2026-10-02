@@ -1,6 +1,8 @@
+com/customertrace/web/dto/RedemptionDtos.class
 com/customertrace/domain/Booking.class
 com/customertrace/web/controller/AdminCampaignController.class
 com/customertrace/web/controller/RestaurantCampaignController.class
+com/customertrace/web/dto/RedemptionDtos$ScanRequest.class
 com/customertrace/security/SecurityProperties.class
 com/customertrace/repository/CreatorRepository.class
 com/customertrace/domain/Decision.class
@@ -16,7 +18,9 @@ com/customertrace/domain/CampaignStatusHistory.class
 com/customertrace/repository/CampaignRepository.class
 com/customertrace/security/RoleCodes.class
 com/customertrace/service/promo/PromoCodeValidationException.class
+com/customertrace/web/dto/RedemptionDtos$ScanResponse.class
 com/customertrace/service/promo/PromoCodeGenerator.class
+com/customertrace/web/dto/RedemptionDtos$RedeemRequest.class
 com/customertrace/domain/Redemption.class
 com/customertrace/repository/RedemptionRepository.class
 com/customertrace/repository/CampaignStatusHistoryRepository.class
@@ -25,6 +29,7 @@ com/customertrace/domain/BookingStatus.class
 com/customertrace/domain/CampaignDecision.class
 com/customertrace/domain/AuditLog.class
 com/customertrace/exception/ApiException.class
+com/customertrace/web/dto/RedemptionDtos$LookupResponse.class
 com/customertrace/domain/ScanEvent.class
 com/customertrace/repository/RoleRepository.class
 com/customertrace/web/dto/AuthDtos.class
@@ -45,6 +50,8 @@ com/customertrace/repository/RestaurantRepository.class
 com/customertrace/service/promo/ParsedPromoCode.class
 com/customertrace/web/dto/CampaignDtos$DecisionRequest.class
 com/customertrace/web/dto/CampaignDtos$CreateCampaignRequest.class
+com/customertrace/web/controller/RedemptionController.class
+com/customertrace/service/RedemptionService.class
 com/customertrace/web/dto/CampaignDtos$CampaignResponse.class
 com/customertrace/domain/RefreshToken.class
 com/customertrace/repository/PromoTierLedgerRepository.class
@@ -54,6 +61,7 @@ com/customertrace/domain/PromoTierLedger.class
 com/customertrace/bootstrap/BootstrapProperties.class
 com/customertrace/web/controller/AuthController.class
 com/customertrace/service/AuthService$IssuedTokens.class
+com/customertrace/web/dto/RedemptionDtos$RedemptionResponse.class
 com/customertrace/web/dto/CampaignDtos.class
 com/customertrace/domain/DecisionParty.class
 com/customertrace/repository/ScanEventRepository.class

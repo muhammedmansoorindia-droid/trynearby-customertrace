@@ -49,12 +49,15 @@
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/service/AuthService.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/service/CampaignQueryService.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/service/CampaignWorkflowService.java
+/Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/service/RedemptionService.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/service/promo/ParsedPromoCode.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/service/promo/PromoCodeGenerator.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/service/promo/PromoCodeValidationException.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/web/controller/AdminCampaignController.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/web/controller/AuthController.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/web/controller/CreatorCampaignController.java
+/Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/web/controller/RedemptionController.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/web/controller/RestaurantCampaignController.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/web/dto/AuthDtos.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/web/dto/CampaignDtos.java
+/Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/web/dto/RedemptionDtos.java

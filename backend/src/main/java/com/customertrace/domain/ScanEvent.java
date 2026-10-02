@@ -24,7 +24,11 @@ public class ScanEvent {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "campaign_id", nullable = false)
+    /**
+     * Nullable since V3: a rejected scan has no resolvable campaign, and recording the attempt is
+     * exactly what makes misuse auditable.
+     */
+    @Column(name = "campaign_id")
     private Long campaignId;
 
     @Column(name = "restaurant_id", nullable = false)
