@@ -1,0 +1,78 @@
+# Customer Trace — local stack: MySQL + Spring Boot API.
+#
+# Usage:
+#   cp .env.example .env      # then fill in real local values
+#   docker compose up -d      # start MySQL + backend
+#   docker compose logs -f backend
+#
+# The frontend is expected to run on the host with `npm run dev`.
+#
+# NOTE: this file never recreates or deletes the MySQL volume. Removing the stack
+# requires an explicit `docker compose down -v`, which is intentionally a manual step.
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: ct-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpw}
+      MYSQL_DATABASE: customertrace
+      MYSQL_USER: ${DB_USERNAME:-ct}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-ctpw}
+    ports:
+      # Host port 3399 avoids clashing with a local MySQL on 3306.
+      - "3399:3306"
+    volumes:
+      - ct_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_ROOT_PASSWORD:-rootpw}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - ct-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ct-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      # Inside the compose network the host is the service name, not localhost.
+      DB_URL: jdbc:mysql://mysql:3306/customertrace?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      DB_USERNAME: ${DB_USERNAME:-ct}
+      DB_PASSWORD: ${DB_PASSWORD:-ctpw}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env - generate with openssl rand -base64 48}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-PT15M}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-P7D}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      AUTH_MAX_FAILED: ${AUTH_MAX_FAILED:-5}
+      AUTH_LOCKOUT: ${AUTH_LOCKOUT:-PT15M}
+      BOOTSTRAP_ENABLED: ${BOOTSTRAP_ENABLED:-false}
+      DEV_ACCOUNT_PASSWORD: ${DEV_ACCOUNT_PASSWORD:-}
+      REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    networks:
+      - ct-net
+
+networks:
+  ct-net:
+    driver: bridge
+
+volumes:
+  ct_mysql_data:
+    name: ct_mysql_data
