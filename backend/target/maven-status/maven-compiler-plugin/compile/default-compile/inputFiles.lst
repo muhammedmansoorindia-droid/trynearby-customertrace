@@ -39,6 +39,7 @@
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/security/JwtService.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/security/RoleCodes.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/security/SecurityProperties.java
+/Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/service/AuthService.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/service/promo/ParsedPromoCode.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/service/promo/PromoCodeGenerator.java
 /Users/mansoor/Desktop/Customer Trace/backend/src/main/java/com/customertrace/service/promo/PromoCodeValidationException.java
