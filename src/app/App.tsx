@@ -8,7 +8,7 @@
  */
 
 import { useEffect } from 'react';
-import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
 
 import { useAppStore } from '@/app/store';
 import { RoleSelect } from '@/app/RoleSelect';
@@ -24,12 +24,16 @@ import { CreatorCampaigns } from '@/app/creator/CreatorCampaigns';
 import { CreatorWizard } from '@/app/creator/CreatorWizard';
 import { NotFound } from '@/app/NotFound';
 
+/**
+ * The router is mounted by the entry point (`src/main.tsx`), not here.
+ *
+ * Rendering a second <BrowserRouter> inside the one that wraps this component makes React
+ * Router throw ("You cannot render a <Router> inside another <Router>"), which unmounts the
+ * whole tree and leaves a blank page. Keeping this component router-agnostic also lets tests
+ * mount it inside a <MemoryRouter> at any starting route.
+ */
 export default function App() {
-  return (
-    <BrowserRouter>
-      <Shell />
-    </BrowserRouter>
-  );
+  return <Shell />;
 }
 
 function Shell() {
