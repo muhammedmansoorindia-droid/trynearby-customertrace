@@ -22,12 +22,19 @@ const elevation = {
   high: '0 20px 40px -8px rgba(33, 24, 19, 0.12), 0 8px 16px -4px rgba(33, 24, 19, 0.06)',
 };
 
-/** Device safe-area insets. Stitch shipped pt-safe/pb-safe but its runtime defined them. */
+/**
+ * Device safe-area insets. Stitch shipped pt-safe/pb-safe but its runtime defined them.
+ *
+ * NOTE: `addUtilities` expects a selector-keyed map of nested declaration objects.
+ * A flat `{ 'pt-safe': 'padding-top: ...' }` map is invalid input and Tailwind emits
+ * it verbatim — producing declaration text with no `.` selector and no braces, which
+ * browsers discard as a malformed rule. Always nest under the `.` selector.
+ */
 const safeAreaPadding = {
-  'pt-safe': 'padding-top: env(safe-area-inset-top, 0px)',
-  'pb-safe': 'padding-bottom: env(safe-area-inset-bottom, 0px)',
-  'pl-safe': 'padding-left: env(safe-area-inset-left, 0px)',
-  'pr-safe': 'padding-right: env(safe-area-inset-right, 0px)',
+  '.pt-safe': { paddingTop: 'env(safe-area-inset-top, 0px)' },
+  '.pb-safe': { paddingBottom: 'env(safe-area-inset-bottom, 0px)' },
+  '.pl-safe': { paddingLeft: 'env(safe-area-inset-left, 0px)' },
+  '.pr-safe': { paddingRight: 'env(safe-area-inset-right, 0px)' },
 };
 
 export default {
