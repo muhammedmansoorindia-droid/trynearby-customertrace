@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/><meta content="mobile_tab" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { colors: { "on-secondary-fixed": "#1f1b13", "on-secondary": "#ffffff", "background": "#fff8f5", "on-error-container": "#93000a", "outline": "#897269", "surface-container-low": "#fff1ea", "inverse-primary": "#ffb596", "surface-container-lowest": "#ffffff", "inverse-surface": "#392e29", "on-primary": "#ffffff", "tertiary": "#9f4114", "on-tertiary-fixed-variant": "#7e2c00", "on-secondary-fixed-variant": "#4c463c", "on-error": "#ffffff", "primary-fixed": "#ffdbcd", "on-tertiary-container": "#632000", "outline-variant": "#ddc1b6", "surface": "#fff8f5", "surface-container-highest": "#f1dfd6", "on-secondary-container": "#6a6459", "error-container": "#ffdad6", "primary-fixed-dim": "#ffb596", "on-primary-container": "#612200", "on-background": "#231a15", "inverse-on-surface": "#ffede5", "tertiary-container": "#f27f4d", "on-surface-variant": "#56423a", "error": "#ba1a1a", "on-surface": "#231a15", "surface-bright": "#fff8f5", "surface-container-high": "#f7e5dc", "secondary-container": "#ebe1d3", "secondary": "#645e53", "surface-tint": "#9e4211", "surface-variant": "#f1dfd6", "tertiary-fixed": "#ffdbce", "surface-dim": "#e8d6ce", "secondary-fixed-dim": "#cec5b8", "surface-container": "#fdeae1", "on-primary-fixed-variant": "#7c2e00", "secondary-fixed": "#ebe1d3", "tertiary-fixed-dim": "#ffb598", "on-tertiary": "#ffffff", "primary-container": "#f0804b", "on-tertiary-fixed": "#370e00", "on-primary-fixed": "#360f00", "primary": "#9e4211" }, borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, spacing: { "space-md": "1rem", "margin": "1.5rem", "space-xs": "0.25rem", "gutter-sm": "1rem", "gutter": "1.5rem", "margin-sm": "1rem", "margin-lg": "3rem", "space-sm": "0.5rem", "gutter-lg": "2rem", "space-lg": "1.5rem", "space-xl": "2.5rem" }, fontFamily: { "body-lg": ["Inter"], "headline-sm": ["Inter"], "display-lg": ["Inter"], "body-sm": ["Inter"], "headline-md": ["Inter"], "label-sm": ["Inter"], "headline-lg": ["Inter"], "label-md": ["Inter"], "display-md-mobile": ["Inter"], "display-md": ["Inter"], "display-lg-mobile": ["Inter"], "body-md": ["Inter"] }, fontSize: { "body-lg": ["16px", { lineHeight: "24px", letterSpacing: "-0.005em", fontWeight: "400" }], "headline-sm": ["18px", { lineHeight: "24px", letterSpacing: "-0.01em", fontWeight: "600" }], "display-lg": ["56px", { lineHeight: "64px", letterSpacing: "-0.03em", fontWeight: "800" }], "body-sm": ["12px", { lineHeight: "16px", letterSpacing: "0em", fontWeight: "400" }], "headline-md": ["22px", { lineHeight: "28px", letterSpacing: "-0.015em", fontWeight: "600" }], "label-sm": ["11px", { lineHeight: "14px", letterSpacing: "0.03em", fontWeight: "600" }], "headline-lg": ["30px", { lineHeight: "38px", letterSpacing: "-0.02em", fontWeight: "700" }], "label-md": ["13px", { lineHeight: "16px", letterSpacing: "0.01em", fontWeight: "600" }], "display-md-mobile": ["28px", { lineHeight: "34px", letterSpacing: "-0.02em", fontWeight: "700" }], "display-md": ["40px", { lineHeight: "48px", letterSpacing: "-0.025em", fontWeight: "700" }], "display-lg-mobile": ["36px", { lineHeight: "42px", letterSpacing: "-0.025em", fontWeight: "800" }], "body-md": ["14px", { lineHeight: "20px", letterSpacing: "0em", fontWeight: "400" }] } } } }</script><style>@layer base{html,body{width:100%;margin:0;padding:0;}body{overscroll-behavior-y:none;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}input#drawer-toggle:checked ~ #drawer-backdrop { opacity: 1; pointer-events: auto; }input#drawer-toggle:checked ~ #drawer-panel { transform: translateX(0); }</style></head><body class="bg-surface text-on-surface min-h-screen flex flex-col font-body-md text-body-md"><input class="hidden peer" id="drawer-toggle" type="checkbox"/><div class="fixed inset-0 z-50 bg-inverse-surface/40 backdrop-blur-sm opacity-0 pointer-events-none transition-opacity duration-300" id="drawer-backdrop" onclick="document.getElementById('drawer-toggle').checked = false;"></div><aside class="fixed top-0 bottom-0 left-0 w-80 max-w-[85vw] z-50 bg-surface-container-lowest shadow-[0_20px_40px_-8px_rgba(33,24,19,0.12)] -translate-x-full transition-transform duration-300 ease-out flex flex-col pt-safe pb-safe" id="drawer-panel"><div class="p-space-lg flex items-center justify-between"><div class="flex items-center gap-space-sm"><img alt="TryNearby Brand Logo" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1X4R4vNlc6t8Cd65ZtSJWhI976YXXX8qP_hYrLsAAw8nQwh1yS4U5NOnsnF-vr4r70mdzz7R6DALMO_52jhPafWHcXYdCvq4hcjaF9Lxq-RU-aZzcH2b2erbbI9L1jss5DafOh_z2aC0xZXnn9BhZhQ5DQjkPTNyhBcGZuSWAmqbBGSyXblh8rVfRQnv53Bhax1ojhNPIcXCIbAWkH3MyVJXsEPrEooPLf3oycoJ2Pegs6idW8OdekYKjs"/><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight">TryNearby</span></div><label class="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:bg-secondary-container transition-colors cursor-pointer" for="drawer-toggle"><span class="material-symbols-outlined text-[24px]">close</span></label></div><div class="px-space-lg py-space-sm"><span class="font-label-sm text-label-sm uppercase tracking-wider text-outline block mb-space-sm">Active Role Switcher</span><div class="bg-surface-container-low p-space-xs rounded-lg flex flex-col gap-1"><a class="flex items-center justify-between p-space-sm rounded-lg bg-surface-container-lowest shadow-[0_1px_3px_0_rgba(33,24,19,0.03)] text-primary font-label-md text-label-md" data-path="overview-dashboard" href="#"><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-[20px]">storefront</span><span>Restaurant Portal</span></div><span class="material-symbols-outlined text-[18px]">check</span></a><a class="flex items-center justify-between p-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container font-label-md text-label-md transition-colors" data-path="creator-campaigns" href="#"><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-[20px]">auto_awesome</span><span>Creator Hub</span></div></a><a class="flex items-center justify-between p-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container font-label-md text-label-md transition-colors" data-path="admin-platform-governance" href="#"><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-[20px]">admin_panel_settings</span><span>TryNearby Admin</span></div></a></div></div><div class="flex-1 overflow-y-auto px-space-lg py-space-md flex flex-col gap-space-lg"><nav class="flex flex-col gap-1" data-active-classes="bg-surface-container text-primary font-headline-sm"><span class="font-label-sm text-label-sm uppercase tracking-wider text-outline px-space-sm mb-space-xs block">Navigation Modules</span><a class="flex items-center gap-space-md px-space-sm py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors" data-path="overview-dashboard" href="#"><span class="material-symbols-outlined text-[22px]">space_dashboard</span><span class="font-body-md text-body-md">Overview</span></a><a class="flex items-center gap-space-md px-space-sm py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors" data-path="collaborations-feed" href="#"><span class="material-symbols-outlined text-[22px]">handshake</span><span class="font-body-md text-body-md">Collaborations</span></a><a aria-current="page" class="flex items-center gap-space-md px-space-sm py-space-sm rounded-lg transition-colors bg-surface-container text-primary font-headline-sm" data-path="creator-campaigns" href="#"><span class="material-symbols-outlined text-[22px]">campaign</span><span class="font-body-md text-body-md">Creator Hub</span></a><a class="flex items-center gap-space-md px-space-sm py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors" data-path="restaurant-directory" href="#"><span class="material-symbols-outlined text-[22px]">restaurant</span><span class="font-body-md text-body-md">Restaurants</span></a><a class="flex items-center gap-space-md px-space-sm py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors" data-path="admin-platform-governance" href="#"><span class="material-symbols-outlined text-[22px]">shield_person</span><span class="font-body-md text-body-md">Platform Admin</span></a></nav></div><div class="p-space-lg bg-surface-container-low flex items-center justify-between"><div class="flex items-center gap-space-sm"><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div><div class="flex flex-col"><span class="font-label-md text-label-md text-on-surface font-semibold">The Rusty Spoon</span><span class="font-label-sm text-label-sm text-outline">Restaurant Partner</span></div></div><a class="w-11 h-11 flex items-center justify-center text-on-surface-variant" data-path="system-settings" href="#"><span class="material-symbols-outlined text-[22px]">settings</span></a></div></aside><header class="fixed top-0 inset-x-0 z-40 bg-surface-bright/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(33,24,19,0.04)] pt-safe"><div class="h-16 px-space-sm flex items-center justify-between gap-space-xs"><div class="flex items-center gap-space-xs"><label class="w-11 h-11 flex items-center justify-center rounded-lg text-on-surface hover:bg-surface-container cursor-pointer transition-colors" for="drawer-toggle"><span class="material-symbols-outlined text-[26px]">menu</span></label><div class="flex items-center gap-space-sm pl-1"><img alt="TryNearby Brand Logo" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1X4R4vNlc6t8Cd65ZtSJWhI976YXXX8qP_hYrLsAAw8nQwh1yS4U5NOnsnF-vr4r70mdzz7R6DALMO_52jhPafWHcXYdCvq4hcjaF9Lxq-RU-aZzcH2b2erbbI9L1jss5DafOh_z2aC0xZXnn9BhZhQ5DQjkPTNyhBcGZuSWAmqbBGSyXblh8rVfRQnv53Bhax1ojhNPIcXCIbAWkH3MyVJXsEPrEooPLf3oycoJ2Pegs6idW8OdekYKjs"/><div class="flex flex-col"><span class="font-headline-sm text-headline-sm text-on-surface font-bold leading-tight">TryNearby</span><div class="flex items-center gap-1"><span class="bg-surface-container text-on-surface px-2 py-0.5 rounded-full font-label-sm text-label-sm leading-none inline-flex items-center">Restaurant</span><span class="font-body-sm text-body-sm text-outline font-normal truncate max-w-[100px]">Creator Campaigns</span></div></div></div></div><div class="flex items-center gap-space-xs"><a class="w-11 h-11 flex items-center justify-center text-on-surface-variant hover:bg-surface-container rounded-lg relative transition-colors" data-path="notifications-center" href="#"><span class="material-symbols-outlined text-[24px]">notifications</span><span class="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-primary ring-2 ring-surface-bright"></span></a><a class="w-11 h-11 flex items-center justify-center" data-path="profile-account" href="#"><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></a></div></div></header><main class="flex-1 flex flex-col relative w-full pt-16 pb-20 bg-surface"><div class="flex flex-col w-full">
+<!-- Interactive Toast Notification Component -->
+<div class="fixed top-20 left-4 right-4 z-50 transform -translate-y-24 opacity-0 transition-all duration-300 pointer-events-none flex items-center justify-between p-space-sm bg-inverse-surface text-inverse-on-surface rounded-xl shadow-xl" id="toast-banner">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-[20px] text-tertiary-container" id="toast-icon">check_circle</span>
+<span class="font-label-md text-label-md" id="toast-msg">Promo code copied to clipboard</span>
+</div>
+<span class="material-symbols-outlined text-[16px] text-outline-variant">close</span>
+</div>
+<!-- Wizard Content Container -->
+<div class="flex flex-col px-space-md py-space-sm gap-space-lg max-w-md mx-auto w-full">
+<!-- Top Header -->
+<div class="flex flex-col gap-1 pt-space-xs">
+<div class="flex items-center gap-space-xs text-primary font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[16px]">verified</span>
+<span>Creator Partner Workspace</span>
+</div>
+<h1 class="font-headline-md text-headline-md text-on-surface font-bold tracking-tight">Create Collaboration Campaign</h1>
+<p class="font-body-md text-body-md text-on-surface-variant">Launch verified dining offers with local restaurants</p>
+</div>
+<!-- Stepper Indicator -->
+<div class="bg-surface-container-low p-space-sm rounded-xl">
+<div class="flex items-center justify-between relative">
+<!-- Connecting Line Track -->
+<div class="absolute left-3 right-3 top-3.5 h-0.5 bg-outline-variant/40 -z-0"></div>
+<div class="absolute left-3 w-3/4 top-3.5 h-0.5 bg-primary -z-0"></div>
+<!-- Step 1 -->
+<div class="flex flex-col items-center gap-1 z-10">
+<div class="w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-sm">
+<span class="material-symbols-outlined text-[16px] font-bold">check</span>
+</div>
+<span class="font-label-sm text-label-sm text-outline">Venue</span>
+</div>
+<!-- Step 2 -->
+<div class="flex flex-col items-center gap-1 z-10">
+<div class="w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-sm">
+<span class="material-symbols-outlined text-[16px] font-bold">check</span>
+</div>
+<span class="font-label-sm text-label-sm text-outline">Details</span>
+</div>
+<!-- Step 3 -->
+<div class="flex flex-col items-center gap-1 z-10">
+<div class="w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-sm">
+<span class="material-symbols-outlined text-[16px] font-bold">check</span>
+</div>
+<span class="font-label-sm text-label-sm text-outline">Code</span>
+</div>
+<!-- Step 4: Active -->
+<div class="flex flex-col items-center gap-1 z-10">
+<div class="w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center ring-4 ring-primary-fixed shadow-md">
+<span class="font-label-sm text-label-sm font-bold">4</span>
+</div>
+<span class="font-label-sm text-label-sm font-bold text-primary">QR Asset</span>
+</div>
+<!-- Step 5 -->
+<div class="flex flex-col items-center gap-1 z-10">
+<div class="w-7 h-7 rounded-full bg-surface-container text-on-surface-variant flex items-center justify-center">
+<span class="font-label-sm text-label-sm font-medium">5</span>
+</div>
+<span class="font-label-sm text-label-sm text-outline">Review</span>
+</div>
+</div>
+</div>
+<!-- Selected Restaurant Context Card -->
+<div class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm">
+<div class="flex items-start gap-space-sm">
+<div class="w-14 h-14 rounded-lg overflow-hidden bg-surface-container-high shrink-0">
+<img class="w-full h-full object-cover" data-alt="Signature aromatic Chennai Biryani served hot in traditional brass handi with boiled egg, fried onions, and spiced curry garnish in soft restaurant daylight" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDhdR_jC9lTqe7-boIwoyESq6LMiOr5GqpR8ONL_uTZJ2CSVp7xAib84mv75rJXH6z0WCU24kN7qIL3ud7DfrqFvnRWbUHKuvZ8bcQf7LAiuGgBMih7tw03igDwzyh4QPq_5Qf_iEcJ0_SfEVNxvsQzZJsAzOAqdKeGkYR9RYhLsazT8OfHzi2cfHtWt8482ciR4X2RuwLKOkjBR2IVR91s1HeZA5ysvE8_2f_B623XfLRogl3m6erqvg"/>
+</div>
+<div class="flex flex-col min-w-0 flex-1">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-primary uppercase font-bold tracking-wide">Selected Venue</span>
+<span class="inline-flex items-center gap-0.5 bg-surface-container px-2 py-0.5 rounded-full font-label-sm text-label-sm text-on-surface">
+<span class="material-symbols-outlined text-[13px] text-tertiary-container" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="font-bold">4.8</span>
+</span>
+</div>
+<h2 class="font-headline-sm text-headline-sm text-on-surface truncate font-bold">Buhari Restaurant</h2>
+<span class="font-body-sm text-body-sm text-outline truncate">Chennai • Mughlai &amp; Biryani</span>
+</div>
+</div>
+<div class="bg-surface-container-low rounded-lg p-space-sm flex flex-col gap-1.5">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-outline uppercase font-semibold">Active Deal Offer</span>
+<span class="font-label-sm text-label-sm text-tertiary font-bold">20% Flat Discount</span>
+</div>
+<p class="font-label-md text-label-md text-on-surface font-bold">Signature Biryani Showcase</p>
+<div class="grid grid-cols-3 gap-2 pt-1 text-center">
+<div class="bg-surface-container-lowest py-1.5 px-1 rounded-lg">
+<span class="font-label-sm text-label-sm text-outline block">Cap</span>
+<span class="font-label-md text-label-md font-bold text-on-surface">150 Guests</span>
+</div>
+<div class="bg-surface-container-lowest py-1.5 px-1 rounded-lg">
+<span class="font-label-sm text-label-sm text-outline block">Term</span>
+<span class="font-label-md text-label-md font-bold text-on-surface">07 Days</span>
+</div>
+<div class="bg-surface-container-lowest py-1.5 px-1 rounded-lg">
+<span class="font-label-sm text-label-sm text-outline block">Dates</span>
+<span class="font-label-sm text-label-sm font-bold text-primary truncate block">Oct 15 - 22</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Generated Promo Code & Verification Panel -->
+<div class="bg-surface-container p-space-md rounded-xl flex flex-col gap-space-sm shadow-sm relative overflow-hidden">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-primary text-[20px]">confirmation_number</span>
+<span class="font-label-sm text-label-sm font-bold text-on-surface uppercase tracking-wider">Unique Promo Algorithm</span>
+</div>
+<span class="inline-flex items-center gap-1 bg-surface-container-lowest text-tertiary px-2 py-0.5 rounded-full font-label-sm text-label-sm font-bold shadow-xs">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+          Live Code
+        </span>
+</div>
+<!-- Code Card Display -->
+<div class="bg-surface-container-lowest rounded-xl p-space-md flex flex-col items-center justify-center gap-1 shadow-sm">
+<span class="font-label-sm text-label-sm text-outline tracking-wider uppercase">Your Canonical Code</span>
+<div class="flex items-center gap-space-sm my-1">
+<span class="font-display-md-mobile text-display-md-mobile tracking-widest text-primary font-extrabold select-all" id="promo-code-display">MK1507A</span>
+<button class="w-9 h-9 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface-variant flex items-center justify-center transition-colors active:scale-95" id="copy-inline-btn" title="Copy Promo Code" type="button">
+<span class="material-symbols-outlined text-[20px]">content_copy</span>
+</button>
+</div>
+<div class="w-full bg-surface-container-low p-space-xs rounded-lg mt-1">
+<p class="font-body-sm text-body-sm text-outline text-center leading-tight">
+            Structure: <span class="font-bold text-on-surface">LL</span> (Creator) + <span class="font-bold text-on-surface">NN</span> (150 Target) + <span class="font-bold text-on-surface">DD</span> (07 Days) + <span class="font-bold text-on-surface">X</span> (Tier A)
+          </p>
+</div>
+</div>
+<!-- Verification Badge & Regenerate Trigger -->
+<div class="flex items-center justify-between pt-space-xs">
+<div class="flex items-center gap-1.5 text-on-surface">
+<span class="material-symbols-outlined text-primary text-[18px]">verified_user</span>
+<span class="font-label-sm text-label-sm font-medium">Single-Use Hash Validated</span>
+</div>
+<button class="inline-flex items-center gap-1 text-primary hover:text-tertiary font-label-md text-label-md font-semibold transition-colors py-1 px-2 rounded-lg hover:bg-surface-container-high" id="regen-btn" type="button">
+<span class="material-symbols-outlined text-[16px]" id="regen-icon">sync</span>
+<span>Regenerate Code</span>
+</button>
+</div>
+</div>
+<!-- Digital QR Pass Card -->
+<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-md flex flex-col items-center gap-space-md">
+<!-- Branded Voucher Ticket Header -->
+<div class="flex items-center justify-between w-full pb-space-xs">
+<div class="flex items-center gap-2">
+<div class="w-8 h-8 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-bold">
+<span class="material-symbols-outlined text-[18px]">local_dining</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold text-on-surface">TryNearby DinePass™</span>
+<span class="font-body-sm text-body-sm text-outline">Buhari Restaurant • Chennai</span>
+</div>
+</div>
+<span class="font-label-sm text-label-sm bg-primary-fixed text-on-primary-fixed-variant px-2 py-0.5 rounded-full font-bold">20% OFF</span>
+</div>
+<!-- Scannable SVG QR Code Artwork -->
+<div class="relative bg-surface-container-lowest p-space-md rounded-2xl shadow-sm flex flex-col items-center justify-center">
+<!-- Corner Accent Markers -->
+<div class="w-56 h-56 bg-surface-bright flex items-center justify-center relative rounded-xl">
+<svg class="w-48 h-48" fill="none" viewbox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">
+<!-- Background grid pattern simulator for tactile QR aesthetic -->
+<rect fill="#FFF8F5" height="160" rx="12" width="160"></rect>
+<!-- Top Left Finder Pattern -->
+<rect fill="#231A15" height="38" rx="6" width="38" x="14" y="14"></rect>
+<rect fill="#FFF8F5" height="26" rx="3" width="26" x="20" y="20"></rect>
+<rect fill="#9E4211" height="14" rx="2" width="14" x="26" y="26"></rect>
+<!-- Top Right Finder Pattern -->
+<rect fill="#231A15" height="38" rx="6" width="38" x="108" y="14"></rect>
+<rect fill="#FFF8F5" height="26" rx="3" width="26" x="114" y="20"></rect>
+<rect fill="#9E4211" height="14" rx="2" width="14" x="120" y="26"></rect>
+<!-- Bottom Left Finder Pattern -->
+<rect fill="#231A15" height="38" rx="6" width="38" x="14" y="108"></rect>
+<rect fill="#FFF8F5" height="26" rx="3" width="26" x="20" y="114"></rect>
+<rect fill="#9E4211" height="14" rx="2" width="14" x="26" y="120"></rect>
+<!-- Synthesized Dynamic QR Modules -->
+<rect fill="#231A15" height="8" rx="1" width="8" x="60" y="16"></rect>
+<rect fill="#231A15" height="8" rx="1" width="16" x="74" y="16"></rect>
+<rect fill="#9E4211" height="10" rx="2" width="10" x="64" y="28"></rect>
+<rect fill="#231A15" height="18" rx="1" width="8" x="80" y="28"></rect>
+<rect fill="#231A15" height="8" rx="1" width="14" x="60" y="44"></rect>
+<rect fill="#231A15" height="14" rx="1" width="8" x="18" y="60"></rect>
+<rect fill="#9E4211" height="8" rx="1" width="14" x="32" y="60"></rect>
+<rect fill="#231A15" height="8" rx="1" width="18" x="18" y="80"></rect>
+<rect fill="#231A15" height="18" rx="1" width="8" x="42" y="74"></rect>
+<rect fill="#231A15" height="10" rx="2" width="10" x="60" y="64"></rect>
+<rect fill="#9E4211" height="16" rx="3" width="16" x="76" y="60"></rect>
+<rect fill="#231A15" height="12" rx="2" width="12" x="60" y="80"></rect>
+<rect fill="#231A15" height="8" rx="1" width="14" x="78" y="82"></rect>
+<rect fill="#231A15" height="8" rx="1" width="18" x="108" y="60"></rect>
+<rect fill="#231A15" height="18" rx="1" width="14" x="132" y="60"></rect>
+<rect fill="#9E4211" height="14" rx="2" width="10" x="108" y="74"></rect>
+<rect fill="#231A15" height="8" rx="1" width="18" x="124" y="84"></rect>
+<rect fill="#9E4211" height="8" rx="1" width="18" x="60" y="108"></rect>
+<rect fill="#231A15" height="18" rx="1" width="8" x="84" y="108"></rect>
+<rect fill="#231A15" height="14" rx="2" width="14" x="60" y="122"></rect>
+<rect fill="#9E4211" height="14" rx="2" width="16" x="78" y="132"></rect>
+<rect fill="#231A15" height="14" rx="2" width="14" x="108" y="108"></rect>
+<rect fill="#231A15" height="8" rx="1" width="18" x="128" y="108"></rect>
+<rect fill="#9E4211" height="18" rx="2" width="18" x="108" y="128"></rect>
+<rect fill="#231A15" height="12" rx="1" width="14" x="132" y="122"></rect>
+<!-- Center Watermark Logo Disc -->
+<circle cx="80" cy="80" fill="#FFF8F5" r="16"></circle>
+<circle cx="80" cy="80" fill="#F0804B" r="12"></circle>
+<path d="M76 77C76 74.7909 77.7909 73 80 73C82.2091 73 84 74.7909 84 77C84 79.5 80 85 80 85C80 85 76 79.5 76 77Z" fill="#FFFFFF"></path>
+<circle cx="80" cy="77" fill="#F0804B" r="1.5"></circle>
+</svg>
+</div>
+<span class="mt-2 font-label-sm text-label-sm text-outline">Scan to redeem on-table POS</span>
+</div>
+<!-- Instructions Snippet -->
+<div class="text-center flex flex-col gap-0.5">
+<p class="font-body-md text-body-md text-on-surface font-semibold">Show this QR at bill payment for 20% discount</p>
+<p class="font-body-sm text-body-sm text-outline">Merchant verifies automatically through staff reader</p>
+</div>
+<!-- Action Buttons Grid -->
+<div class="grid grid-cols-2 gap-space-sm w-full pt-space-xs">
+<button class="flex items-center justify-center gap-1.5 h-11 bg-primary hover:bg-tertiary text-on-primary rounded-lg font-label-md text-label-md font-semibold transition-all shadow-sm active:scale-95" id="download-pass-btn" type="button">
+<span class="material-symbols-outlined text-[18px]">download</span>
+<span>Download QR</span>
+</button>
+<button class="flex items-center justify-center gap-1.5 h-11 bg-surface-container-high hover:bg-secondary-container text-on-surface rounded-lg font-label-md text-label-md font-semibold transition-all active:scale-95" id="copy-code-btn" type="button">
+<span class="material-symbols-outlined text-[18px]">content_copy</span>
+<span>Copy Code</span>
+</button>
+</div>
+</div>
+<!-- Review & Submit Final CTA -->
+<div class="flex flex-col gap-space-sm pt-space-xs pb-space-lg">
+<button class="w-full h-13 py-3.5 bg-primary-container hover:bg-tertiary-container text-on-primary rounded-xl font-headline-sm text-headline-sm font-bold shadow-md hover:shadow-lg transition-all active:scale-[0.99] flex items-center justify-center gap-2" id="submit-campaign-btn" type="button">
+<span>Submit for Admin Approval</span>
+<span class="material-symbols-outlined text-[20px]">arrow_forward</span>
+</button>
+<div class="bg-surface-container-low p-space-sm rounded-xl flex items-start gap-space-sm">
+<span class="material-symbols-outlined text-primary text-[20px] shrink-0 mt-0.5">info</span>
+<p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">
+          Submissions are reviewed within 2 hours. Your campaign status will update to <span class="font-semibold text-on-surface">Approved</span> once verified by venue management.
+        </p>
+</div>
+</div>
+</div>
+</div>
+<script>
+  (function initCreatorWizard() {
+    const toast = document.getElementById('toast-banner');
+    const toastMsg = document.getElementById('toast-msg');
+    const toastIcon = document.getElementById('toast-icon');
+    let toastTimeout;
+
+    function showToast(message, iconName = 'check_circle') {
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastMsg.textContent = message;
+      toastIcon.textContent = iconName;
+      toast.classList.remove('opacity-0', '-translate-y-24', 'pointer-events-none');
+      toast.classList.add('opacity-100', 'translate-y-0');
+
+      toastTimeout = setTimeout(() => {
+        toast.classList.add('opacity-0', '-translate-y-24', 'pointer-events-none');
+        toast.classList.remove('opacity-100', 'translate-y-0');
+      }, 2600);
+    }
+
+    // Copy Promo Code Handlers
+    const codeDisplay = document.getElementById('promo-code-display');
+    const copyInlineBtn = document.getElementById('copy-inline-btn');
+    const copyCodeBtn = document.getElementById('copy-code-btn');
+
+    function executeCopy() {
+      const code = codeDisplay.textContent.trim();
+      navigator.clipboard?.writeText(code).then(() => {
+        showToast('Promo code ' + code + ' copied to clipboard!');
+      }).catch(() => {
+        showToast('Promo code ' + code + ' ready!');
+      });
+    }
+
+    if (copyInlineBtn) copyInlineBtn.addEventListener('click', executeCopy);
+    if (copyCodeBtn) copyCodeBtn.addEventListener('click', executeCopy);
+
+    // Regenerate Code Handler
+    const regenBtn = document.getElementById('regen-btn');
+    const regenIcon = document.getElementById('regen-icon');
+    const suffixes = ['A', 'B', 'C', 'X', 'Z'];
+
+    if (regenBtn) {
+      regenBtn.addEventListener('click', () => {
+        regenIcon.classList.add('animate-spin');
+        setTimeout(() => {
+          regenIcon.classList.remove('animate-spin');
+          const randomChar = suffixes[Math.floor(Math.random() * suffixes.length)];
+          const randomNum = Math.floor(10 + Math.random() * 89);
+          const newCode = 'MK15' + randomNum.toString().padStart(2, '0') + randomChar;
+          codeDisplay.textContent = newCode;
+          showToast('Fresh voucher code generated: ' + newCode, 'auto_awesome');
+        }, 400);
+      });
+    }
+
+    // Download QR Pass Action
+    const downloadBtn = document.getElementById('download-pass-btn');
+    if (downloadBtn) {
+      downloadBtn.addEventListener('click', () => {
+        showToast('Saving High-Res QR DinePass to device...', 'download');
+      });
+    }
+
+    // Final Submission Action
+    const submitBtn = document.getElementById('submit-campaign-btn');
+    if (submitBtn) {
+      submitBtn.addEventListener('click', () => {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `
+          <span class="material-symbols-outlined text-[20px] animate-spin">progress_activity</span>
+          <span>Transmitting Campaign...</span>
+        `;
+        setTimeout(() => {
+          submitBtn.classList.remove('bg-primary-container', 'hover:bg-tertiary-container');
+          submitBtn.classList.add('bg-surface-container-highest', 'text-on-surface-variant');
+          submitBtn.innerHTML = `
+            <span class="material-symbols-outlined text-[20px] text-tertiary">check_circle</span>
+            <span>Submitted for 2h Verification</span>
+          `;
+          showToast('Campaign successfully dispatched to Buhari Restaurant & Admins!', 'done_all');
+        }, 1200);
+      });
+    }
+  })();
+</script></main><nav class="fixed bottom-0 inset-x-0 z-40 pb-safe bg-surface-bright/90 backdrop-blur-xl shadow-[0_-2px_12px_rgba(33,24,19,0.05)]" data-active-classes="text-primary font-semibold"><div class="flex justify-around items-center h-20 px-space-xs"><a class="flex flex-col items-center justify-center gap-1 w-16 h-16 text-on-surface-variant hover:text-on-surface transition-colors" data-path="overview-dashboard" href="#"><span class="material-symbols-outlined text-[24px]">grid_view</span><span class="font-label-sm text-label-sm">Overview</span></a><a class="flex flex-col items-center justify-center gap-1 w-16 h-16 text-on-surface-variant hover:text-on-surface transition-colors" data-path="collaborations-feed" href="#"><span class="material-symbols-outlined text-[24px]">handshake</span><span class="font-label-sm text-label-sm">Collabs</span></a><a aria-current="page" class="flex flex-col items-center justify-center gap-1 w-16 h-16 transition-colors text-primary font-semibold" data-path="creator-campaigns" href="#"><span class="material-symbols-outlined text-[24px]">star</span><span class="font-label-sm text-label-sm">Creators</span></a><a class="flex flex-col items-center justify-center gap-1 w-16 h-16 text-on-surface-variant hover:text-on-surface transition-colors" data-path="restaurant-directory" href="#"><span class="material-symbols-outlined text-[24px]">store</span><span class="font-label-sm text-label-sm">Venues</span></a><a class="flex flex-col items-center justify-center gap-1 w-16 h-16 text-on-surface-variant hover:text-on-surface transition-colors" data-path="admin-platform-governance" href="#"><span class="material-symbols-outlined text-[24px]">shield</span><span class="font-label-sm text-label-sm">Admin</span></a></div></nav></body></html>

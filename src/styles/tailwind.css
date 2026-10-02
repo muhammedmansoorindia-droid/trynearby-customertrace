@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-surface text-on-surface font-body-md text-body-md;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Visible focus for keyboard users — Stitch supplied no focus treatment at all. */
+  :focus-visible {
+    outline: 2px solid #f0804b;
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* Material Symbols renders as text; hide the placeholder flash. */
+  .material-symbols-outlined {
+    font-variation-settings:
+      'FILL' 0,
+      'wght' 400,
+      'GRAD' 0,
+      'opsz' 24;
+    line-height: 1;
+  }
+}
+
+@layer components {
+  /* DESIGN.md → desktop caps at 1280px with 2rem gutters and 3rem margins. */
+  .ct-canvas {
+    @apply w-full mx-auto max-w-canvas;
+  }
+
+  /* Skip link — accessibility affordance absent from the Stitch export. */
+  .ct-skip-link {
+    @apply sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100]
+           focus:px-4 focus:py-2 focus:rounded-lg focus:bg-primary focus:text-on-primary
+           focus:font-label-md focus:text-label-md;
+  }
+}
+
+@layer utilities {
+  .ct-scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Respect users who ask the OS to reduce motion (Stitch animates a laser line + toasts). */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
