@@ -154,11 +154,44 @@ With the backend running:
 | Creator campaigns | `POST /api/creator/campaigns`; `GET` list and `/{id}`; `POST /{id}/submit`; `GET /{id}/history` |
 | Admin campaigns | `GET /api/admin/campaigns`, `/{id}`, `/{id}/history`; `POST /{id}/approve`, `/{id}/reject` |
 | Restaurant campaigns | `GET /api/restaurants/campaigns`, `/{id}`, `/{id}/history`; `POST /{id}/approve`, `/{id}/reject` |
+| Scans & redemptions | `GET /api/restaurants/scan/lookup`; `POST /api/restaurants/scan/scan`; `POST /api/restaurants/scan/redeem` |
 
 **Campaign workflow, enforced server-side:** a submitted campaign becomes `ACTIVE` only after
 **both** the TryNearby administrator and the restaurant approve. Either party rejecting makes it
 `REJECTED`, and it can no longer be approved. Each decision, its author, timestamp and reason are
 stored separately, and the deciding party is fixed by the route so neither can act for the other.
+
+**Scans versus redemptions:** `POST /scan` records interest only — it never creates a
+redemption and never changes the verified-customer count. `POST /redeem` is the only call that
+produces a verified customer visit, and it is what enforces the campaign limit, the validity
+window and the E–J monthly tier rule.
+
+### Example: a full campaign lifecycle
+
+```bash
+# 1. Creator creates a draft and submits it (a promo code is generated on submit)
+curl -X POST localhost:8080/api/creator/campaigns -H "Authorization: Bearer $CREATOR" \
+  -H 'Content-Type: application/json' \
+  -d '{"restaurantId":1,"title":"Weekend Biryani","offerText":"Flat 15% Off",
+       "discountPercent":15,"targetCustomers":50,"durationDays":7,
+       "startDate":"2026-09-01","endDate":"2026-12-31"}'
+
+curl -X POST localhost:8080/api/creator/campaigns/1/submit -H "Authorization: Bearer $CREATOR"
+
+# 2. TryNearby approves (status stays PENDING until the restaurant also approves)
+curl -X POST localhost:8080/api/admin/campaigns/1/approve -H "Authorization: Bearer $ADMIN"
+
+# 3. The restaurant approves — now the campaign is ACTIVE
+curl -X POST localhost:8080/api/restaurants/campaigns/1/approve -H "Authorization: Bearer $RESTAURANT"
+
+# 4. Look the code up, scan it, then redeem it
+curl "localhost:8080/api/restaurants/scan/lookup?code=<CODE>" -H "Authorization: Bearer $RESTAURANT"
+curl -X POST localhost:8080/api/restaurants/scan/scan -H "Authorization: Bearer $RESTAURANT" \
+  -H 'Content-Type: application/json' -d '{"promoCode":"<CODE>","method":"QR"}'
+curl -X POST localhost:8080/api/restaurants/scan/redeem -H "Authorization: Bearer $RESTAURANT" \
+  -H 'Content-Type: application/json' \
+  -d '{"promoCode":"<CODE>","customerRef":"guest-1","billPaise":200000,"discountPaise":30000}'
+```
 
 ## Tests
 
@@ -178,12 +211,14 @@ mvn clean package
 
 Stated plainly so nothing here is mistaken for finished work:
 
-* **Redemption and scan endpoints are not implemented.** The schema, entities and repositories for
-  `scan_events`, `redemptions` and the promo tier ledger exist, but there is no REST layer and no
-  verified-redemption flow. The frontend scanner still reads the local demo store.
+* **Portal dashboards still read the local demo store.** Sign-in, the API client and the
+  campaign/scan endpoints are wired to the backend, but the dashboard, campaign-list and scanner
+  screens have not been migrated from their local demo data to API calls.
 * **Reports and analytics endpoints are not implemented** for any of the three portals.
-* **Bookings, reviews, subscriptions and creator assignment** have schema support only.
-* **The frontend is not yet wired to the backend.** Screens still read the local demo store, and
-  the three-button portal selection plus sign-in pages are still pending.
+* **Bookings, reviews, subscriptions, creator assignment and notifications** have schema support
+  only; the REST layers are still to come, so those UI screens remain demo-backed.
+* **Backend integration tests are not yet written.** The promo-code rules have real unit tests;
+  the dual-approval and redemption flows have been verified against a running server and MySQL
+  but are not yet covered by automated Spring tests.
 * Payment processing is intentionally not integrated; `subscriptions.external_ref` is reserved for
   a future provider.

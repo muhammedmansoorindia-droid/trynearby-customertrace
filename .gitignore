@@ -9,3 +9,9 @@ dist-ssr
 coverage
 .vite
 *.tsbuildinfo
+
+# Backend build output and test reports
+backend/target/
+target/
+*.jar
+!.backend/**/*.jar
