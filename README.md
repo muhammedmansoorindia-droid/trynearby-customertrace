@@ -196,16 +196,37 @@ curl -X POST localhost:8080/api/restaurants/scan/redeem -H "Authorization: Beare
 ## Tests
 
 ```bash
-# Frontend
-npm run test              # vitest
-npx tsc -b                # type check
-npm run build             # production build
-
-# Backend
+# Backend — unit + integration tests
 cd backend
-mvn clean test
-mvn clean package
+mvn clean test        # 54 tests
+mvn clean verify      # full verification, produces target/backend-1.0.0.jar
+
+# Frontend
+npm run test          # 80 tests (vitest)
+npx tsc -b            # type check
+npm run build         # production build
 ```
+
+### How the backend tests are isolated
+
+Integration tests run against a **separate `customertrace_test` schema**, never your
+development data. Create it once:
+
+```bash
+docker exec -it ct-mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "
+  CREATE DATABASE IF NOT EXISTS customertrace_test;
+  GRANT ALL PRIVILEGES ON customertrace_test.* TO 'ct'@'%';
+  GRANT ALL PRIVILEGES ON customertrace_test.* TO 'ct'@'localhost';"
+```
+
+Override the connection with `TEST_DB_URL` / `TEST_DB_USERNAME` / `TEST_DB_PASSWORD`
+(defaults in `backend/src/test/resources/application-test.yml`). Every test runs inside a
+transaction that is rolled back, so fixtures never leak between tests.
+
+**What is covered:** promo-code format and encodability, tier selection and the monthly
+E–J rule, authentication (valid/invalid/disabled/locked accounts, tampered and malformed
+JWTs, role restrictions), the dual-approval campaign workflow, and the scan-versus-redemption
+distinction including duplicate prevention and cross-tenant denial.
 
 ## Known limitations
 
@@ -217,8 +238,9 @@ Stated plainly so nothing here is mistaken for finished work:
 * **Reports and analytics endpoints are not implemented** for any of the three portals.
 * **Bookings, reviews, subscriptions, creator assignment and notifications** have schema support
   only; the REST layers are still to come, so those UI screens remain demo-backed.
-* **Backend integration tests are not yet written.** The promo-code rules have real unit tests;
-  the dual-approval and redemption flows have been verified against a running server and MySQL
-  but are not yet covered by automated Spring tests.
+* **Concurrent-redemption testing is indirect.** Duplicate prevention is covered by the
+  same-day unique key and a sequential integration test; a genuinely concurrent multi-threaded
+  test has not been written, so the race is prevented by the database constraint rather than
+  demonstrated under load.
 * Payment processing is intentionally not integrated; `subscriptions.external_ref` is reserved for
   a future provider.
