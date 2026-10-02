@@ -8,6 +8,10 @@ spring:
   application:
     name: customer-trace-api
 
+  # ── Test profile ────────────────────────────────────────────────────────────
+  # Integration tests run against a separate `customertrace_test` schema on the same MySQL
+  # server, so a developer's working data is never touched. Flyway still owns the schema and
+  # Hibernate only validates it.
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3399/customertrace?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
     username: ${DB_USERNAME:ct}
@@ -47,6 +51,8 @@ server:
   error:
     include-message: never
     include-stacktrace: never
+    # SQL messages can leak schema detail, so they are never returned to a client.
+    include-binding-errors: never
 
 management:
   endpoints:

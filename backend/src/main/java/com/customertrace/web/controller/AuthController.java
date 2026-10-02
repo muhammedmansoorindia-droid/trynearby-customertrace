@@ -52,7 +52,7 @@ public class AuthController {
         AuthService.IssuedTokens issued = authService.login(body, clientIp(request));
         // The raw refresh token is sealed into the HttpOnly cookie, never into the body.
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, refreshCookie(issued.refreshToken()).toString())
+                .header(HttpHeaders.SET_COOKIE, refreshCookie(issued.refreshToken()))
                 .body(issued.response());
     }
 
@@ -64,7 +64,7 @@ public class AuthController {
             HttpServletRequest request) {
         AuthService.IssuedTokens issued = authService.refresh(refreshToken, clientIp(request));
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, refreshCookie(issued.refreshToken()).toString())
+                .header(HttpHeaders.SET_COOKIE, refreshCookie(issued.refreshToken()))
                 .body(issued.response());
     }
 
@@ -76,7 +76,13 @@ public class AuthController {
             HttpServletRequest request) {
         authService.logout(refreshToken, clientIp(request));
         // Always clear the cookie, even if the token was already gone.
-        ResponseCookie clear = refreshCookie("").maxAge(0).build();
+        ResponseCookie clear = ResponseCookie.from(securityProperties.getRefreshCookieName(), "")
+                .httpOnly(true)
+                .secure(securityProperties.isRefreshCookieSecure())
+                .path("/api/auth")
+                .maxAge(0)
+                .sameSite(securityProperties.getRefreshCookieSameSite())
+                .build();
         return ResponseEntity.noContent()
                 .header(HttpHeaders.SET_COOKIE, clear.toString())
                 .build();
@@ -90,14 +96,21 @@ public class AuthController {
         return ResponseEntity.ok(authService.currentUser(principal.userId()));
     }
 
-    /** Builds the refresh cookie with the configured security attributes. */
-    private ResponseCookie.ResponseCookieBuilder refreshCookie(String value) {
+    /**
+     * Builds the refresh cookie and returns it ready for the {@code Set-Cookie} header.
+     *
+     * <p>Must be {@code build()}d: the builder's own {@code toString()} is an object identity,
+     * not a header value, and produces an {@code Invalid Set-Cookie header} error.
+     */
+    private String refreshCookie(String value) {
         return ResponseCookie.from(securityProperties.getRefreshCookieName(), value)
                 .httpOnly(true)
                 .secure(securityProperties.isRefreshCookieSecure())
                 .path("/api/auth")
                 .maxAge(securityProperties.getRefreshTokenTtl())
-                .sameSite(securityProperties.getRefreshCookieSameSite());
+                .sameSite(securityProperties.getRefreshCookieSameSite())
+                .build()
+                .toString();
     }
 
     /**

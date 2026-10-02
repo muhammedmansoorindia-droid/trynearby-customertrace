@@ -1,0 +1,32 @@
+spring:
+  config:
+    activate:
+      on-profile: test
+  datasource:
+    # A dedicated schema, so integration tests never touch development data.
+    url: ${TEST_DB_URL:jdbc:mysql://localhost:3399/customertrace_test?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${TEST_DB_USERNAME:ct}
+    password: ${TEST_DB_PASSWORD:ctpw}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    # Each run starts from a known-good schema; the test schema holds no real data.
+    clean-disabled: false
+
+customer-trace:
+  security:
+    # A test-only key. It is a fixed literal so tests can pre-issue tokens, and it is
+    # explicitly not the production placeholder.
+    jwt-secret: test-only-signing-key-not-used-in-production-0123456789
+    access-token-ttl: PT15M
+  bootstrap:
+    # Tests build their own fixtures; the seeder stays off.
+    enabled: false
+
+logging:
+  level:
+    root: WARN
+    com.customertrace: INFO
+    org.springframework.web: WARN
