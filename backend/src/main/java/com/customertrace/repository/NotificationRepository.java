@@ -20,11 +20,13 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     @Query("SELECT COUNT(n) FROM Notification n WHERE n.recipientId = :recipientId AND n.read = false")
     long countUnread(@Param("recipientId") Long recipientId);
 
-    @Modifying
+    // clearAutomatically so a caller reading the row back in the same transaction does not see the
+    // stale entity already in the persistence context.
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE Notification n SET n.read = true WHERE n.recipientId = :recipientId AND n.id = :id")
     int markRead(@Param("recipientId") Long recipientId, @Param("id") Long id);
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE Notification n SET n.read = true WHERE n.recipientId = :recipientId")
     int markAllRead(@Param("recipientId") Long recipientId);
 }
