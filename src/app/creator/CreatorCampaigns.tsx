@@ -1,46 +1,80 @@
 /**
  * The creator's campaign list, with the shareable QR pass.
  *
- * The QR encodes the promo code as plain text — decoding it must never require a network
+ * <p>The QR encodes the promo code as plain text — decoding it must never require a network
  * round-trip, because the pass has to work in a restaurant with no data connection. That is
  * also why a typed-code fallback exists on the restaurant's scanner.
+ *
+ * <p>Submission is a backend call: the promo code is minted server-side, so the code shown here is
+ * always the one the restaurant's scanner will accept. Whether a submit is offered comes from the
+ * campaign's own `canSubmit` flag.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-import { NoData } from '@/app/PortalLayout';
-import { useAppStore } from '@/app/store';
-import { Badge, Button, Card, EmptyState, SectionHeading } from '@/app/ui';
-import { STATUS_LABELS, STATUS_TONES, canPerform } from '@/services/campaignWorkflow';
-import { selectCampaignMetrics } from '@/services/metrics';
+import { useMutation, useResource } from '@/app/useResource';
+import {
+  Badge,
+  Button,
+  Callout,
+  Card,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  SectionHeading,
+} from '@/app/ui';
+import { campaignsApi, toFrontendStatus } from '@/services/backend/campaigns';
+import { reportsApi } from '@/services/backend/reports';
+import { STATUS_LABELS, STATUS_TONES } from '@/services/campaignWorkflow';
 import { formatDateRange, formatRelative } from '@/utils/format';
 
 export function CreatorCampaigns() {
-  const db = useAppStore((s) => s.db);
-  const creatorId = useAppStore((s) => s.session.creatorId);
-  const performAction = useAppStore((s) => s.performAction);
+  const list = useResource(useCallback(() => campaignsApi.listForCreator(), []), []);
+  const performance = useResource(useCallback(() => reportsApi.creatorCampaigns(), []), []);
 
-  const creator = db.creators.find((c) => c.id === creatorId);
-  if (!creator) {
-    return <NoData message="Switch portal and pick a creator to continue." />;
-  }
+  const submit = useMutation(async (id: number) => campaignsApi.submit(id));
 
-  const campaigns = db.campaigns.filter((c) => c.creatorId === creator.id);
+  const refresh = () => {
+    list.reload();
+    performance.reload();
+  };
+
+  const campaigns = list.data?.content ?? [];
+  const byId = new Map((performance.data ?? []).map((row) => [row.id, row]));
 
   return (
     <div className="space-y-gutter">
       <SectionHeading
         title="Your campaigns"
         subtitle="Each live campaign has a QR pass. Share it with your audience — the restaurant validates it at the till."
+        action={
+          <Button variant="secondary" onClick={refresh}>
+            Refresh
+          </Button>
+        }
       />
 
-      {campaigns.length === 0 ? (
+      {submit.error ? <Callout tone="error">{submit.error.message}</Callout> : null}
+
+      {list.error ? (
+        <ErrorState
+          message={list.error.message}
+          isNetworkError={list.error.isNetworkError}
+          onRetry={list.reload}
+        />
+      ) : list.loading ? (
+        <LoadingState label="Loading your campaigns…" />
+      ) : campaigns.length === 0 ? (
         <EmptyState title="No campaigns yet" hint="Create one to get a QR pass to share." />
       ) : (
         <ul className="grid gap-gutter lg:grid-cols-2">
           {campaigns.map((campaign) => {
-            const restaurant = db.restaurants.find((r) => r.id === campaign.restaurantId);
-            const m = selectCampaignMetrics(campaign, db.scans, db.redemptions);
+            const status = toFrontendStatus(campaign.status);
+            const metrics = byId.get(campaign.id);
+            const quotaPercent =
+              metrics && campaign.targetCustomers > 0
+                ? Math.round((metrics.verifiedCustomers / campaign.targetCustomers) * 100)
+                : 0;
 
             return (
               <Card as="li" key={campaign.id} className="p-gutter space-y-space-md">
@@ -50,12 +84,10 @@ export function CreatorCampaigns() {
                       {campaign.title}
                     </h3>
                     <p className="text-body-sm text-body-sm text-on-surface-variant">
-                      {restaurant?.name} · {restaurant?.city}
+                      {campaign.restaurantName}
                     </p>
                   </div>
-                  <Badge className={STATUS_TONES[campaign.status]}>
-                    {STATUS_LABELS[campaign.status]}
-                  </Badge>
+                  <Badge className={STATUS_TONES[status]}>{STATUS_LABELS[status]}</Badge>
                 </div>
 
                 <p className="text-body-md text-body-md text-on-surface">{campaign.offerText}</p>
@@ -66,13 +98,23 @@ export function CreatorCampaigns() {
                     : ''}
                 </p>
 
-                {campaign.rejectionReason ? (
+                {campaign.status === 'REJECTED' ? (
                   <p className="rounded-lg bg-error-container px-space-sm py-space-xs text-body-sm text-body-sm text-on-error-container">
                     <strong className="font-label-md block">Rejected</strong>
-                    {campaign.rejectionReason}
+                    {campaign.adminReason ?? campaign.restaurantReason ?? 'No reason supplied.'}
                   </p>
                 ) : null}
 
+                {/* Says plainly whose approval is still outstanding. */}
+                {campaign.status === 'PENDING' ? (
+                  <Callout tone="info">
+                    {campaign.adminDecision === 'APPROVE'
+                      ? 'TryNearby has approved. Waiting for the restaurant before it goes live.'
+                      : campaign.restaurantDecision === 'APPROVE'
+                        ? 'The restaurant has approved. Waiting for TryNearby before it goes live.'
+                        : 'Submitted. Both TryNearby and the restaurant must approve before it goes live.'}
+                  </Callout>
+                ) : null}
 
                 {campaign.promoCode ? (
                   <div className="flex flex-wrap items-center gap-gutter rounded-lg bg-surface-container p-space-md">
@@ -92,7 +134,7 @@ export function CreatorCampaigns() {
                         <div className="flex gap-1">
                           <dt>Verified</dt>
                           <dd className="text-on-surface">
-                            {m.verifiedCustomers} ({m.quotaUsedPercent}%)
+                            {metrics?.verifiedCustomers ?? 0} ({quotaPercent}%)
                           </dd>
                         </div>
                       </dl>
@@ -104,16 +146,22 @@ export function CreatorCampaigns() {
                   </p>
                 )}
 
-                <div className="flex flex-wrap gap-space-sm">
-                  {canPerform(campaign.status, 'submit') ? (
-                    <Button onClick={() => performAction(campaign.id, 'submit')}>
-                      {campaign.status === 'rejected' ? 'Revise & resubmit' : 'Submit for review'}
-                    </Button>
-                  ) : null}
-                  {canPerform(campaign.status, 'go_live') ? (
-                    <Button onClick={() => performAction(campaign.id, 'go_live')}>Go live</Button>
-                  ) : null}
-                </div>
+                {/* The backend decides whether this creator may submit right now. */}
+                {campaign.canSubmit ? (
+                  <Button
+                    disabled={submit.pending}
+                    onClick={async () => {
+                      const result = await submit.run(campaign.id);
+                      if (result) refresh();
+                    }}
+                  >
+                    {submit.pending
+                      ? 'Submitting…'
+                      : campaign.status === 'REJECTED'
+                        ? 'Revise & resubmit'
+                        : 'Submit for review'}
+                  </Button>
+                ) : null}
               </Card>
             );
           })}
@@ -122,7 +170,6 @@ export function CreatorCampaigns() {
     </div>
   );
 }
-
 /**
  * Renders the code as a QR image.
  *

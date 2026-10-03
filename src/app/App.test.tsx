@@ -12,7 +12,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
 import App from '@/app/App';
-import { useAppStore } from '@/app/store';
+import { useAuthStore, type Portal } from '@/app/authStore';
 
 function renderAt(path: string) {
   return render(
@@ -22,8 +22,31 @@ function renderAt(path: string) {
   );
 }
 
+/**
+ * Puts the auth store into the state a signed-in user of that portal would have.
+ *
+ * <p>Routing now derives the active portal from the user's roles rather than from the demo
+ * store's session, so these tests seed `authStore` instead.
+ */
+const ROLE_BY_PORTAL: Record<Portal, string> = {
+  trynearby: 'ADMIN',
+  restaurant: 'RESTAURANT',
+  creator: 'CREATOR',
+};
+
+function signInAs(portal: Portal) {
+  useAuthStore.setState({
+    user: {
+      userId: `test-${portal}@example.test`,
+      displayName: 'Test User',
+      roles: [ROLE_BY_PORTAL[portal]],
+    },
+    initialising: false,
+  });
+}
+
 beforeEach(() => {
-  useAppStore.getState().signOut();
+  useAuthStore.setState({ user: null, initialising: false, error: null });
 });
 
 describe('App routing', () => {
@@ -44,7 +67,7 @@ describe('App routing', () => {
   });
 
   it('mounts the portal shell on an active portal route', () => {
-    useAppStore.getState().setPortal('trynearby');
+    signInAs('trynearby');
     renderAt('/trynearby');
 
     expect(screen.getByRole('banner')).toBeInTheDocument();
@@ -53,7 +76,7 @@ describe('App routing', () => {
   });
 
   it('shows NotFound for an unknown route inside an active portal', () => {
-    useAppStore.getState().setPortal('trynearby');
+    signInAs('trynearby');
     renderAt('/trynearby/nope');
     expect(screen.getByText(/that screen does not exist/i)).toBeInTheDocument();
   });
@@ -70,7 +93,7 @@ describe('portal-selection navigation', () => {
   // and rendered NotFound. NotFound's "Back to portal selection" link points at "/", so
   // clicking it re-rendered NotFound — an inescapable dead end.
   it('shows the portal-selection screen at "/" while a portal is active', () => {
-    useAppStore.getState().setPortal('trynearby');
+    signInAs('trynearby');
     renderAt('/');
 
     expect(screen.getByRole('link', { name: /TryNearby/i })).toBeInTheDocument();
@@ -81,7 +104,7 @@ describe('portal-selection navigation', () => {
 
   it('"Back to portal selection" returns from NotFound to the role screen', async () => {
     const user = userEvent.setup();
-    useAppStore.getState().setPortal('trynearby');
+    signInAs('trynearby');
     renderAt('/trynearby/nope');
 
     expect(screen.getByText(/that screen does not exist/i)).toBeInTheDocument();
@@ -98,7 +121,7 @@ describe('portal-selection navigation', () => {
     for (const portal of ['restaurant', 'creator'] as const) {
       // Activate the portal BEFORE rendering, otherwise the signed-out branch renders
       // RoleSelect for the stale path and there is no NotFound link to click.
-      useAppStore.getState().setPortal(portal);
+      signInAs(portal);
       const view = renderAt(`/${portal}/nope`);
 
       expect(screen.getByText(/that screen does not exist/i)).toBeInTheDocument();

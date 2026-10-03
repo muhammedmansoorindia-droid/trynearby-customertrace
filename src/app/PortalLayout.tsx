@@ -5,9 +5,12 @@
  * portals can never leave a stale link pointing into another portal's routes.
  */
 
-import { NavLink, Outlet } from 'react-router-dom';
+import { useCallback } from 'react';
+import { Link, NavLink, Outlet } from 'react-router-dom';
 
-import { useAppStore } from '@/app/store';
+import { selectPortal, useAuthStore } from '@/app/authStore';
+import { useResource } from '@/app/useResource';
+import { notificationsApi } from '@/services/backend/community';
 import { Badge, Button, EmptyState } from '@/app/ui';
 import { cn } from '@/utils';
 import type { Portal } from '@/types/models';
@@ -22,34 +25,38 @@ const NAV: Record<Exclude<Portal, null>, Array<{ to: string; label: string; icon
     { to: '/restaurant/scan', label: 'Scan & redeem', icon: 'qr_code_scanner' },
     { to: '/restaurant/campaigns', label: 'Campaigns', icon: 'campaign' },
     { to: '/restaurant/bookings', label: 'Bookings', icon: 'event' },
+    { to: '/restaurant/creators', label: 'Creators', icon: 'group' },
+    { to: '/restaurant/subscription', label: 'Subscription', icon: 'workspace_premium' },
   ],
   creator: [
     { to: '/creator', label: 'Dashboard', icon: 'dashboard' },
     { to: '/creator/campaigns', label: 'Campaigns', icon: 'campaign' },
     { to: '/creator/new', label: 'New campaign', icon: 'add_circle' },
+    { to: '/creator/bookings', label: 'Bookings', icon: 'event' },
+    { to: '/creator/reviews', label: 'Reviews', icon: 'star' },
   ],
 };
 
 export function PortalLayout() {
-  const session = useAppStore((s) => s.session);
-  const db = useAppStore((s) => s.db);
-  const signOut = useAppStore((s) => s.signOut);
-  const lastError = useAppStore((s) => s.lastError);
-  const clearError = useAppStore((s) => s.clearError);
+  const user = useAuthStore((s) => s.user);
+  const portal = useAuthStore(selectPortal);
+  const signOut = useAuthStore((s) => s.signOut);
+  const authError = useAuthStore((s) => s.error);
+  const clearError = useAuthStore((s) => s.clearError);
 
-  const portal = session.portal;
+  // Unread count comes from the server, so it reflects notifications raised by other portals.
+  const unread = useResource(useCallback(() => notificationsApi.unreadCount(), []), []);
+
   if (!portal) return null;
 
   const identity =
     portal === 'restaurant'
-      ? db.restaurants.find((r) => r.id === session.restaurantId)?.name
+      ? user?.restaurantName
       : portal === 'creator'
-        ? db.creators.find((c) => c.id === session.creatorId)?.displayName
+        ? user?.displayName
         : 'Platform governance';
 
-  const unread = db.notifications.filter(
-    (n) => n.audience === portal && !n.read && (n.recipientId === null || n.recipientId === session.restaurantId || n.recipientId === session.creatorId),
-  ).length;
+  const unreadCount = unread.data?.unreadCount ?? 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -76,17 +83,18 @@ export function PortalLayout() {
           </div>
 
           <div className="flex items-center gap-space-sm">
-            {unread > 0 ? (
-              <span
+            {unreadCount > 0 ? (
+              <Link
+                to="/notifications"
                 className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1
                   font-label-sm text-label-sm text-on-primary"
-                title={`${unread} unread notification${unread === 1 ? '' : 's'}`}
+                title={`${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}`}
               >
                 <span className="material-symbols-outlined text-[16px]" aria-hidden="true">
                   notifications
                 </span>
-                {unread}
-              </span>
+                {unreadCount}
+              </Link>
             ) : null}
             <Button variant="ghost" onClick={signOut}>
               Switch portal
@@ -123,14 +131,14 @@ export function PortalLayout() {
       </header>
 
       <main id="main" className="ct-canvas px-gutter py-gutter">
-        {lastError ? (
+        {authError ? (
           <div
             role="alert"
             className="mb-gutter flex items-start justify-between gap-space-md rounded-lg
               border border-error/25 bg-error-container px-space-md py-space-sm
               text-body-md text-body-md text-on-error-container"
           >
-            <span>{lastError}</span>
+            <span>{authError}</span>
             <button
               type="button"
               onClick={clearError}

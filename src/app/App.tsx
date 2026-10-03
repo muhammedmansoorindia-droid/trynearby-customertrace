@@ -1,16 +1,16 @@
 /**
  * Application shell and routing.
  *
- * Three portals live in one SPA over one store. The route guard is deliberately thin: it
- * only checks that *a* portal is active and bounces to the role screen otherwise, because
- * every deeper permission decision already lives in `campaignWorkflow`'s transition table.
- * Guarding again here would create a second source of truth for the same rules.
+ * <p>The route guard checks the signed-in user's role and sends them to their own portal if they
+ * try to reach another one. Deeper permission decisions are not duplicated here: the backend
+ * enforces tenant and role rules on every endpoint, and each screen renders from the flags the
+ * backend returns.
  */
 
 import { useEffect } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
 
-import { useAppStore } from '@/app/store';
+import { selectPortal, useAuthStore } from '@/app/authStore';
 import { RoleSelect } from '@/app/RoleSelect';
 import { SignIn } from '@/app/SignIn';
 import { PortalLayout } from '@/app/PortalLayout';
@@ -20,9 +20,14 @@ import { RestaurantDashboard } from '@/app/restaurant/RestaurantDashboard';
 import { RestaurantCampaigns } from '@/app/restaurant/RestaurantCampaigns';
 import { RestaurantScanner } from '@/app/restaurant/RestaurantScanner';
 import { RestaurantBookings } from '@/app/restaurant/RestaurantBookings';
+import { RestaurantSubscription } from '@/app/restaurant/RestaurantSubscription';
+import { RestaurantAssignments } from '@/app/restaurant/RestaurantAssignments';
 import { CreatorDashboard } from '@/app/creator/CreatorDashboard';
 import { CreatorCampaigns } from '@/app/creator/CreatorCampaigns';
 import { CreatorWizard } from '@/app/creator/CreatorWizard';
+import { CreatorBookings } from '@/app/creator/CreatorBookings';
+import { CreatorReviews } from '@/app/creator/CreatorReviews';
+import { NotificationCentre } from '@/app/NotificationCentre';
 import { NotFound } from '@/app/NotFound';
 
 /**
@@ -38,7 +43,7 @@ export default function App() {
 }
 
 function Shell() {
-  const portal = useAppStore((s) => s.session.portal);
+  const portal = useAuthStore(selectPortal);
   const location = useLocation();
 
   // Move focus to the top of the page on navigation so keyboard and screen-reader users are
@@ -84,9 +89,15 @@ function Shell() {
         <Route path="/restaurant/campaigns" element={<RestaurantCampaigns />} />
         <Route path="/restaurant/scan" element={<RestaurantScanner />} />
         <Route path="/restaurant/bookings" element={<RestaurantBookings />} />
+        <Route path="/restaurant/subscription" element={<RestaurantSubscription />} />
+        <Route path="/restaurant/creators" element={<RestaurantAssignments />} />
         <Route path="/creator" element={<CreatorDashboard />} />
         <Route path="/creator/campaigns" element={<CreatorCampaigns />} />
         <Route path="/creator/new" element={<CreatorWizard />} />
+        <Route path="/creator/bookings" element={<CreatorBookings />} />
+        <Route path="/creator/reviews" element={<CreatorReviews />} />
+        {/* One inbox for every portal; the backend scopes it to the signed-in user. */}
+        <Route path="/notifications" element={<NotificationCentre />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

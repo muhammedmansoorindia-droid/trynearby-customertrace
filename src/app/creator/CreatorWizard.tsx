@@ -1,25 +1,31 @@
 /**
  * New-campaign wizard.
  *
- * The form is constrained *before* submission: customer target is 10–99 and duration 1–31
- * because those two values are encoded as the `NN` and `DD` characters of the promo code. A
- * target of 150 is not merely discouraged, it is unrepresentable — so the sliders are bounded
- * and the review step shows the code that will be issued.
+ * <p>The form is constrained *before* submission: customer target is 10–99 and duration 1–31
+ * because those two values are encoded as the `NN` and `DD` characters of the promo code. A target
+ * of 150 is not merely discouraged, it is unrepresentable.
  *
- * The code is minted at draft time rather than at submit: letting a creator hold a code
- * without ever entering the queue would let them squat on the exclusive tier budget, which is
- * the resource the per-restaurant monthly rule actually rations.
+ * <p>Creating and submitting are two backend calls, matching how the server models it: `create`
+ * makes a draft, `submit` mints the promo code and moves it into the review queue. The code is
+ * therefore only issued once the campaign genuinely enters the queue, so a creator cannot squat
+ * on the per-restaurant monthly exclusive-tier budget by holding a draft.
  */
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { NoData } from '@/app/PortalLayout';
-import { mintCodeFor, useAppStore } from '@/app/store';
-import { Button, Callout, Card, Field, SectionHeading, inputClass } from '@/app/ui';
-import { EXCLUSIVE_TIERS, getAvailableTiers } from '@/services/promoCode';
-import type { Campaign } from '@/types/models';
-import { createId } from '@/utils';
+import { useMutation, useResource } from '@/app/useResource';
+import {
+  Button,
+  Callout,
+  Card,
+  ErrorState,
+  Field,
+  LoadingState,
+  inputClass,
+} from '@/app/ui';
+import { assignmentsApi } from '@/services/backend/community';
+import { campaignsApi } from '@/services/backend/campaigns';
 import { toDateKey } from '@/utils/format';
 
 const STEP_TITLES = ['Restaurant', 'Offer', 'Reach', 'Review'];
@@ -28,21 +34,8 @@ const MAX_TARGET = 99;
 const MIN_DAYS = 1;
 const MAX_DAYS = 31;
 
-/** `restaurantId:YYYY-MM` for a date-only string, matching `utils/format`'s monthKey scope. */
-function monthOf(restaurantId: string, dateOnly: string): string {
-  return `${restaurantId}:${dateOnly.slice(0, 7)}`;
-}
-
 export function CreatorWizard() {
   const navigate = useNavigate();
-  const db = useAppStore((s) => s.db);
-  const creatorId = useAppStore((s) => s.session.creatorId);
-  const setDb = useAppStore((s) => s.setDb);
-
-  const creator = db.creators.find((c) => c.id === creatorId);
-  if (!creator) {
-    return <NoData message="Switch portal and pick a creator to continue." />;
-  }
 
   const [step, setStep] = useState(0);
   const [restaurantId, setRestaurantId] = useState('');
@@ -51,23 +44,45 @@ export function CreatorWizard() {
   const [discountPercent, setDiscountPercent] = useState(20);
   const [target, setTarget] = useState(25);
   const [duration, setDuration] = useState(7);
-  const [error, setError] = useState<string | null>(null);
 
-  const restaurant = db.restaurants.find((r) => r.id === restaurantId);
+  // Only restaurants this creator is actually assigned to may be targeted.
+  const assignments = useResource(useCallback(() => assignmentsApi.listForCreator(), []), []);
+
+  const assignedIds = useMemo(
+    () => new Set((assignments.data ?? []).filter((a) => a.active).map((a) => a.restaurantId)),
+    [assignments.data],
+  );
+
   const startDate = toDateKey();
-
   const endDate = useMemo(() => {
     const [y, m, d] = startDate.split('-').map(Number);
     return toDateKey(new Date(y, (m ?? 1) - 1, (d ?? 1) + duration));
   }, [startDate, duration]);
 
-  // Preview the code that *would* be issued, so the creator sees the NN/DD they are choosing
-  // before they commit. The real code is minted by the engine on submit, not derived here.
-  const previewTiers = restaurantId
-    ? getAvailableTiers(restaurantId, monthOf(restaurantId, startDate), { records: db.promoCodes })
-    : [];
-  const previewTier = previewTiers[0] ?? 'A';
-  const previewCode = `${'LL'}${String(target).padStart(2, '0')}${String(duration).padStart(2, '0')}${previewTier}`;
+  // Shape preview only. The real code is minted server-side on submit; this shows the NN/DD the
+  // creator is committing to, without claiming a tier that may not be free.
+  const previewCode = `LL${String(target).padStart(2, '0')}${String(duration).padStart(2, '0')}X`;
+
+  const createAndSubmit = useMutation(async () => {
+    const draft = await campaignsApi.create({
+      restaurantId: Number(restaurantId),
+      title: title.trim(),
+      offerText: offerText.trim(),
+      discountPercent,
+      targetCustomers: target,
+      durationDays: duration,
+      startDate,
+      endDate,
+    });
+    // A draft with no code; submitting is what mints it and enters the queue.
+    return campaignsApi.submit(draft.id);
+  });
+
+  const submit = async () => {
+    if (!restaurantId) return;
+    const created = await createAndSubmit.run();
+    if (created) navigate('/creator/campaigns');
+  };
 
   const stepValid = [
     Boolean(restaurantId),
@@ -76,54 +91,8 @@ export function CreatorWizard() {
     true,
   ][step];
 
-  const submit = () => {
-    if (!restaurant) {
-      setError('Pick a restaurant first.');
-      return;
-    }
-
-    const now = new Date();
-    const campaignId = createId('cmp');
-    const record = mintCodeFor(db, restaurant.id, campaignId, target, duration, now);
-    if (!record) {
-      setError('No promo code could be minted right now. Try a different restaurant or target.');
-      return;
-    }
-
-    const campaign: Campaign = {
-      id: campaignId,
-      creatorId: creator.id,
-      restaurantId: restaurant.id,
-      title: title.trim(),
-      offerText: offerText.trim(),
-      discountPercent,
-      targetCustomers: target,
-      durationDays: duration,
-      startDate,
-      endDate,
-      status: 'pending_admin',
-      promoCode: record.code,
-      createdAt: now.toISOString(),
-      submittedAt: now.toISOString(),
-    };
-
-    setDb({
-      ...db,
-      campaigns: [...db.campaigns, campaign],
-      promoCodes: [...db.promoCodes, record],
-    });
-
-    navigate('/creator/campaigns');
-  };
-
-
   return (
     <div className="max-w-3xl space-y-gutter">
-      <SectionHeading
-        title="New campaign"
-        subtitle="Your target and duration become part of the promo code, so both are fixed once issued."
-      />
-
       <ol className="flex flex-wrap gap-space-xs" aria-label="Progress">
         {STEP_TITLES.map((label, index) => (
           <li key={label} className="flex items-center gap-space-xs">
@@ -148,22 +117,45 @@ export function CreatorWizard() {
 
       <Card className="p-gutter">
         {step === 0 ? (
-          <Field label="Which restaurant?" hint="The offer runs at this venue's till.">
-            <select
-              className={inputClass}
-              value={restaurantId}
-              onChange={(event) => setRestaurantId(event.target.value)}
-            >
-              <option value="">Choose a restaurant…</option>
-              {db.restaurants
-                .filter((r) => r.status === 'active')
-                .map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name} · {r.city}
+          <Field
+            label="Which restaurant?"
+            hint={
+              assignments.loading
+                ? 'Loading your assignments…'
+                : 'You can only target restaurants you are assigned to.'
+            }
+          >
+            {assignments.error ? (
+              <ErrorState
+                title="Could not load your assignments"
+                message={assignments.error.message}
+                isNetworkError={assignments.error.isNetworkError}
+                onRetry={assignments.reload}
+              />
+            ) : assignments.loading ? (
+              <LoadingState label="Loading restaurants…" />
+            ) : (
+              <select
+                className={inputClass}
+                value={restaurantId}
+                onChange={(event) => setRestaurantId(event.target.value)}
+              >
+                <option value="">Choose a restaurant…</option>
+                {[...assignedIds].map((id) => (
+                  <option key={id} value={id}>
+                    Restaurant #{id}
                   </option>
                 ))}
-            </select>
+              </select>
+            )}
           </Field>
+        ) : null}
+
+        {step === 0 && assignments.data && assignedIds.size === 0 ? (
+          <Callout tone="info">
+            You have no active restaurant assignments yet, so there is nowhere to run a campaign.
+            Ask TryNearby to assign you to a restaurant.
+          </Callout>
         ) : null}
 
         {step === 1 ? (
@@ -255,7 +247,7 @@ export function CreatorWizard() {
               <div>
                 <dt className="text-body-sm text-body-sm text-on-surface-variant">Restaurant</dt>
                 <dd className="text-body-md text-body-md text-on-surface">
-                  {restaurant?.name ?? '—'}
+                  {restaurantId ? `Restaurant #${restaurantId}` : '—'}
                 </dd>
               </div>
               <div>
@@ -283,8 +275,7 @@ export function CreatorWizard() {
               <div>
                 <dt className="text-body-sm text-body-sm text-on-surface-variant">Tier</dt>
                 <dd className="text-body-md text-body-md text-on-surface">
-                  {previewTier}
-                  {EXCLUSIVE_TIERS.includes(previewTier) ? ' (exclusive)' : ' (reusable)'}
+                  Assigned on issue
                 </dd>
               </div>
             </dl>
@@ -303,12 +294,14 @@ export function CreatorWizard() {
             </div>
 
             <Callout tone="info">
-              {EXCLUSIVE_TIERS.includes(previewTier)
-                ? `Tier ${previewTier} is exclusive: this restaurant can use it once this month. Tiers E–J are preferred, but they run out — the next best free tier is assigned automatically.`
-                : 'All six exclusive tiers (E–J) are already used at this restaurant this month, so a reusable tier is assigned instead.'}
+              The code's tier letter is assigned by the server when you submit, preferring the
+              exclusive E–J tiers. Those can be used only once per restaurant per month, so if all
+              six are taken a reusable tier is assigned automatically.
             </Callout>
 
-            {error ? <Callout tone="error">{error}</Callout> : null}
+            {createAndSubmit.error ? (
+              <Callout tone="error">{createAndSubmit.error.message}</Callout>
+            ) : null}
           </div>
         ) : null}
 
@@ -326,7 +319,9 @@ export function CreatorWizard() {
               Continue
             </Button>
           ) : (
-            <Button onClick={submit}>Submit for review</Button>
+            <Button onClick={() => void submit()} disabled={createAndSubmit.pending}>
+              {createAndSubmit.pending ? 'Submitting…' : 'Submit for review'}
+            </Button>
           )}
         </div>
       </Card>

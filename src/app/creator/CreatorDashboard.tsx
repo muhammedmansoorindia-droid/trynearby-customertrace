@@ -1,72 +1,103 @@
 /**
  * Creator dashboard.
  *
- * The funnel is shown per campaign, not as one lifetime total, because the honest question a
- * creator asks is "which of my campaigns actually drove visits?" — a blended number would
- * let a dead campaign hide behind a successful one.
+ * <p>The funnel is shown per campaign, not as one lifetime total, because the honest question a
+ * creator asks is "which of my campaigns actually drove visits?" — a blended number would let a
+ * dead campaign hide behind a successful one.
+ *
+ * <p>All figures come from the creator-scoped report endpoints. Verified customers are derived
+ * from redemptions on the server, so the gap between the scan and customer bars is real.
  */
 
+import { useCallback } from 'react';
 import { Link } from 'react-router-dom';
 
-import { NoData } from '@/app/PortalLayout';
-import { useAppStore } from '@/app/store';
-import { Badge, Button, Card, EmptyState, FunnelBar, SectionHeading, StatTile } from '@/app/ui';
-import { selectCampaignMetrics, selectCreatorMetrics } from '@/services/metrics';
+import { useAuthStore } from '@/app/authStore';
+import { useResource } from '@/app/useResource';
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  FunnelBar,
+  LoadingState,
+  SectionHeading,
+  StatTile,
+} from '@/app/ui';
+import { campaignsApi, toFrontendStatus } from '@/services/backend/campaigns';
+import { reportsApi } from '@/services/backend/reports';
 import { STATUS_LABELS, STATUS_TONES } from '@/services/campaignWorkflow';
 import { formatCompactINR } from '@/utils/format';
 
 export function CreatorDashboard() {
-  const db = useAppStore((s) => s.db);
-  const creatorId = useAppStore((s) => s.session.creatorId);
+  const displayName = useAuthStore((s) => s.user?.displayName);
+  const handle = useAuthStore((s) => s.user?.creatorHandle);
 
-  const creator = db.creators.find((c) => c.id === creatorId);
-  if (!creator) {
-    return <NoData message="Switch portal and pick a creator to continue." />;
-  }
+  const summary = useResource(useCallback(() => reportsApi.creatorSummary(), []), []);
+  const performance = useResource(useCallback(() => reportsApi.creatorCampaigns(), []), []);
+  const campaigns = useResource(useCallback(() => campaignsApi.listForCreator(), []), []);
 
-  const metrics = selectCreatorMetrics(creator.id, db);
-  const campaigns = db.campaigns.filter((c) => c.creatorId === creator.id);
-  const active = campaigns.filter((c) => c.status === 'live' || c.status === 'approved');
-  const awaiting = campaigns.filter((c) => c.status === 'pending_admin');
+  const byId = new Map((performance.data ?? []).map((row) => [row.id, row]));
+  const active = (campaigns.data?.content ?? []).filter((c) => c.status === 'ACTIVE');
+  const awaiting = (campaigns.data?.content ?? []).filter((c) => c.status === 'PENDING').length;
+  const total = campaigns.data?.totalElements ?? 0;
 
   return (
     <div className="space-y-gutter">
       <SectionHeading
-        title={creator.displayName}
-        subtitle={`@${creator.handle} · ${creator.followers.toLocaleString('en-IN')} followers · ${creator.niche.join(' · ')}`}
+        title={displayName ?? 'Your dashboard'}
+        subtitle={handle ? `@${handle}` : 'Your campaigns and their verified results'}
         action={
-          <Link to="/creator/new">
-            <Button>New campaign</Button>
-          </Link>
+          <div className="flex items-center gap-space-sm">
+            <Button variant="secondary" onClick={summary.reload}>
+              Refresh
+            </Button>
+            <Link to="/creator/new">
+              <Button>New campaign</Button>
+            </Link>
+          </div>
         }
       />
 
-      <div className="grid gap-space-md sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile
-          label="Verified customers"
-          value={metrics.verifiedCustomers.toLocaleString('en-IN')}
-          hint="Distinct diners who actually redeemed"
-          tone="primary"
+      {summary.error ? (
+        <ErrorState
+          message={summary.error.message}
+          isNetworkError={summary.error.isNetworkError}
+          onRetry={summary.reload}
         />
-        <StatTile
-          label="Passes scanned"
-          value={metrics.totalScans.toLocaleString('en-IN')}
-          hint="Reach — not customers"
-          tone="muted"
-        />
-        <StatTile
-          label="Discount provided"
-          value={formatCompactINR(metrics.discountProvidedInPaise)}
-          hint={`${metrics.redemptions} redemptions`}
-        />
-        <StatTile
-          label="Live campaigns"
-          value={String(metrics.activeCampaignCount)}
-          hint={`${metrics.campaignCount} total · ${awaiting.length} awaiting review`}
-        />
-      </div>
+      ) : summary.loading ? (
+        <LoadingState label="Loading your metrics…" />
+      ) : (
+        <div className="grid gap-space-md sm:grid-cols-2 lg:grid-cols-4">
+          <StatTile
+            label="Verified customers"
+            value={(summary.data?.verifiedCustomers ?? 0).toLocaleString('en-IN')}
+            hint="Distinct diners who actually redeemed"
+            tone="primary"
+          />
+          <StatTile
+            label="Passes scanned"
+            value={(summary.data?.scans ?? 0).toLocaleString('en-IN')}
+            hint="Reach — not customers"
+            tone="muted"
+          />
+          <StatTile
+            label="Discount provided"
+            value={formatCompactINR(summary.data?.discountPaise ?? 0)}
+            hint={`${summary.data?.redemptions ?? 0} redemptions`}
+          />
+          <StatTile
+            label="Live campaigns"
+            value={String(active.length)}
+            hint={`${total} total · ${awaiting} awaiting review`}
+          />
+        </div>
+      )}
 
-      {active.length === 0 ? (
+      {campaigns.loading ? (
+        <LoadingState label="Loading your campaigns…" />
+      ) : active.length === 0 ? (
         <EmptyState
           title="No live campaigns"
           hint="Submit a campaign and it will appear in the admin review queue."
@@ -74,8 +105,8 @@ export function CreatorDashboard() {
       ) : (
         <div className="space-y-gutter">
           {active.map((campaign) => {
-            const restaurant = db.restaurants.find((r) => r.id === campaign.restaurantId);
-            const m = selectCampaignMetrics(campaign, db.scans, db.redemptions);
+            const status = toFrontendStatus(campaign.status);
+            const m = byId.get(campaign.id);
 
             return (
               <Card key={campaign.id} className="p-gutter">
@@ -85,12 +116,10 @@ export function CreatorDashboard() {
                       <h3 className="font-headline-sm text-headline-sm text-on-surface">
                         {campaign.title}
                       </h3>
-                      <Badge className={STATUS_TONES[campaign.status]}>
-                        {STATUS_LABELS[campaign.status]}
-                      </Badge>
+                      <Badge className={STATUS_TONES[status]}>{STATUS_LABELS[status]}</Badge>
                     </div>
                     <p className="text-body-sm text-body-sm text-on-surface-variant">
-                      {restaurant?.name} · {campaign.offerText}
+                      {campaign.restaurantName} · {campaign.offerText}
                     </p>
                   </div>
                   <Link
@@ -103,34 +132,32 @@ export function CreatorDashboard() {
 
                 <div className="mt-space-md grid gap-gutter lg:grid-cols-2">
                   <FunnelBar
-                    scans={m.totalScans}
-                    redemptions={m.redemptionCount}
-                    customers={m.verifiedCustomers}
+                    scans={m?.scans ?? 0}
+                    redemptions={m?.redemptions ?? 0}
+                    customers={m?.verifiedCustomers ?? 0}
                   />
                   <dl className="grid grid-cols-2 gap-space-sm self-center text-body-sm text-body-sm">
                     <div>
                       <dt className="text-on-surface-variant">Target reached</dt>
                       <dd className="text-on-surface">
-                        {m.verifiedCustomers} / {campaign.targetCustomers}
+                        {m?.verifiedCustomers ?? 0} / {campaign.targetCustomers}
                       </dd>
                     </div>
                     <div>
                       <dt className="text-on-surface-variant">Discount given</dt>
                       <dd className="text-on-surface">
-                        {formatCompactINR(m.discountProvidedInPaise)}
+                        {formatCompactINR(m?.discountPaise ?? 0)}
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-on-surface-variant">Scan → redeem</dt>
+                      <dt className="text-on-surface-variant">Scan → customer</dt>
                       <dd className="text-on-surface">
-                        {Math.round(m.scanToRedemptionRate * 100)}%
+                        {(m?.conversionRatePercent ?? 0).toFixed(1)}%
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-on-surface-variant">Revenue influenced</dt>
-                      <dd className="text-on-surface">
-                        {formatCompactINR(m.revenueInfluencedInPaise)}
-                      </dd>
+                      <dt className="text-on-surface-variant">Redemptions</dt>
+                      <dd className="text-on-surface">{m?.redemptions ?? 0}</dd>
                     </div>
                   </dl>
                 </div>

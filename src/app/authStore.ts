@@ -121,3 +121,18 @@ export function userCanAccess(user: AuthUser | null, portal: Portal): boolean {
     portal === 'trynearby' ? 'ADMIN' : portal === 'restaurant' ? 'RESTAURANT' : 'CREATOR';
   return user.roles.includes(role);
 }
+
+/**
+ * The portal the signed-in user belongs to, derived from their roles.
+ *
+ * <p>Used to drive navigation. When a user somehow holds two portal roles, the first match in
+ * `PORTALS` wins so the nav is deterministic rather than arbitrary.
+ */
+export function portalForRoles(user: AuthUser | null): Portal | undefined {
+  if (!user) return undefined;
+  return (['trynearby', 'restaurant', 'creator'] as const).find((p) => userCanAccess(user, p));
+}
+
+/** Zustand selector form, so components subscribe only to the value they need. */
+export const selectPortal = (state: AuthState): Portal | undefined =>
+  portalForRoles(state.user);
