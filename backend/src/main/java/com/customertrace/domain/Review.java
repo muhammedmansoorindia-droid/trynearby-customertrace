@@ -33,7 +33,8 @@ public class Review {
     @Column(name = "campaign_id")
     private Long campaignId;
 
-    @Column(name = "rating", nullable = false)
+    // TINYINT in the schema; declared so Hibernate's validation agrees.
+    @Column(name = "rating", nullable = false, columnDefinition = "TINYINT")
     private int rating;
 
     @Column(name = "body", length = 1000)

@@ -38,7 +38,8 @@ public class SubscriptionPlan {
     @Column(name = "features", length = 500)
     private String features;
 
-    @Column(name = "active", nullable = false)
+    // TINYINT in the schema; declared so Hibernate's validation agrees.
+    @Column(name = "active", nullable = false, columnDefinition = "TINYINT")
     private boolean active = true;
 
     @Column(name = "created_at", nullable = false)

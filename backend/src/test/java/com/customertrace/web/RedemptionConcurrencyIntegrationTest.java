@@ -72,7 +72,13 @@ class RedemptionConcurrencyIntegrationTest extends ConcurrencyTestBase {
 
     /** Builds an approved, in-date campaign and returns its id. */
     private long activeCampaign(int targetCustomers) throws Exception {
-        String body = "{\"restaurantId\":" + restaurant.getId()
+        return activeCampaign(restaurant, restaurantUser, targetCustomers);
+    }
+
+    /** Same as above but for a specific restaurant, so tier caps cannot collide. */
+    private long activeCampaign(Restaurant owner, User approver, int targetCustomers)
+            throws Exception {
+        String body = "{\"restaurantId\":" + owner.getId()
                 + ",\"title\":\"Concurrent\",\"offerText\":\"15% off\""
                 + ",\"discountPercent\":15,\"targetCustomers\":" + targetCustomers
                 + ",\"durationDays\":10,\"startDate\":\""
@@ -93,7 +99,7 @@ class RedemptionConcurrencyIntegrationTest extends ConcurrencyTestBase {
                 .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isOk());
         mockMvc.perform(withToken(post("/api/restaurants/campaigns/" + id + "/approve"),
-                        tokenFor(restaurantUser))
+                        tokenFor(approver))
                 .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isOk());
         return id;
@@ -213,23 +219,36 @@ class RedemptionConcurrencyIntegrationTest extends ConcurrencyTestBase {
 @Test
     @DisplayName("concurrent redemptions on independent campaigns are not blocked by each other")
     void independentCampaignsDoNotBlockEachOther() throws Exception {
+        // Two separate restaurants: the E-J monthly tier cap is per restaurant per month, so
+        // sharing one restaurant could legitimately let one redemption lose the tier race and
+        // make this assertion about campaign independence meaningless.
+        Restaurant second = createRestaurant("chef2" + runId + "@restrnt", "Silver Spoon",
+                "Kochi");
+        User secondUser = userRepository.findByUserIdIgnoreCase("chef2" + runId + "@restrnt")
+                .orElseThrow();
+
         long first = activeCampaign(20);
-        long second = activeCampaign(20);
+        long second2 = activeCampaign(second, secondUser, 20);
         String firstCode = promoCodeFor(first);
-        String secondCode = promoCodeFor(second);
+        String secondCode = promoCodeFor(second2);
         assertThat(firstCode).isNotBlank().isNotEqualTo(secondCode);
 
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
         List<Future<Integer>> futures = new ArrayList<>();
-        for (String code : List.of(firstCode, secondCode)) {
+        for (var attempt : List.of(
+                new Object[] {firstUser(), firstCode, "guest-x"},
+                new Object[] {secondUser, secondCode, "guest-x"})) {
+            User actor = (User) attempt[0];
+            String code = (String) attempt[1];
+            String guest = (String) attempt[2];
             futures.add(executor.submit(() -> {
                 ready.countDown();
                 start.await(10, TimeUnit.SECONDS);
                 return mockMvc.perform(withToken(post("/api/restaurants/scan/redeem"),
-                                tokenFor(restaurantUser))
+                                tokenFor(actor))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(redeemBody(code, "guest-x")))
+                        .content(redeemBody(code, guest)))
                         .andReturn().getResponse().getStatus();
             }));
         }
@@ -240,7 +259,11 @@ class RedemptionConcurrencyIntegrationTest extends ConcurrencyTestBase {
             assertThat(future.get(30, TimeUnit.SECONDS)).isEqualTo(201);
         }
         assertThat(redemptionCount(first)).isEqualTo(1);
-        assertThat(redemptionCount(second)).isEqualTo(1);
+        assertThat(redemptionCount(second2)).isEqualTo(1);
+    }
+
+    private User firstUser() {
+        return restaurantUser;
     }
 
     @Test

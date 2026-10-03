@@ -94,6 +94,12 @@ public class SecurityConfig {
                 .requestMatchers("/api/restaurants/**").hasRole("RESTAURANT")
                 .requestMatchers("/api/creator/**").hasRole("CREATOR")
                 .requestMatchers("/api/auth/me", "/api/notifications/**").authenticated()
+                // Reports are role-scoped: a creator must never reach the platform-wide view,
+                // and a restaurant must never reach the creator view. The service also enforces
+                // ownership, but the URL namespace is the first line of defence.
+                .requestMatchers("/api/reports/platform/**").hasRole("ADMIN")
+                .requestMatchers("/api/reports/restaurant/**").hasRole("RESTAURANT")
+                .requestMatchers("/api/reports/creator/**").hasRole("CREATOR")
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll())
             .exceptionHandling(ex -> ex
