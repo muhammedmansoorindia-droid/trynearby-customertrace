@@ -17,6 +17,10 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
 
     List<Review> findByCreatorId(Long creatorId);
 
+    /** The creator's most recent review of one restaurant, used for profile display. */
+    Optional<Review> findFirstByCreatorIdAndRestaurantIdOrderByCreatedAtDesc(
+            Long creatorId, Long restaurantId);
+
     /** One review per creator/restaurant/campaign; used to block duplicates. */
     Optional<Review> findByCreatorIdAndRestaurantIdAndCampaignId(Long creatorId, Long restaurantId,
                                                                 Long campaignId);
