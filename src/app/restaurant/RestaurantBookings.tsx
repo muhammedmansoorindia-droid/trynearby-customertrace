@@ -1,70 +1,125 @@
 /**
- * Table bookings requested against the restaurant's campaigns.
+ * Table bookings addressed to the restaurant.
  *
- * Confirming is the one mutation here; it is written through the store so the creator who
- * made the request sees the status change without a refresh.
+ * <p>Status changes are sent to the backend and the list is refetched only after it confirms. Which
+ * transitions are offered mirrors the backend's allow-list; a refusal is shown verbatim rather than
+ * silently swallowed, because the server is the authority on what is legal.
  */
 
-import { useAppStore } from '@/app/store';
-import { NoData } from '@/app/PortalLayout';
-import { Badge, Button, Card, EmptyState, SectionHeading } from '@/app/ui';
-import { formatDate, formatRelative } from '@/utils/format';
-import { cn } from '@/utils';
+import { useCallback, useState } from 'react';
 
-const TONES = {
-  requested: 'bg-primary-fixed text-on-primary-fixed-variant border-primary-fixed',
-  confirmed: 'bg-secondary-container text-on-secondary-fixed border-secondary/25',
-  completed: 'bg-surface-container text-on-surface-variant border-outline-variant/40',
-  cancelled: 'bg-error-container text-on-error-container border-error/25',
-} as const;
+import { useMutation, useResource } from '@/app/useResource';
+import {
+  Badge,
+  Button,
+  Callout,
+  Card,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  SectionHeading,
+} from '@/app/ui';
+import {
+  allowedNextStatuses,
+  bookingsApi,
+  type BookingStatus,
+} from '@/services/backend/bookings';
+import { cn } from '@/utils';
+import { formatDate, formatRelative } from '@/utils/format';
+
+const TONES: Record<BookingStatus, string> = {
+  REQUESTED: 'bg-primary-fixed text-on-primary-fixed-variant border-primary-fixed',
+  CONFIRMED: 'bg-secondary-container text-on-secondary-fixed border-secondary/25',
+  COMPLETED: 'bg-surface-container text-on-surface-variant border-outline-variant/40',
+  CANCELLED: 'bg-error-container text-on-error-container border-error/25',
+  DECLINED: 'bg-error-container text-on-error-container border-error/25',
+};
+
+const LABELS: Record<BookingStatus, string> = {
+  REQUESTED: 'Requested',
+  CONFIRMED: 'Confirmed',
+  COMPLETED: 'Completed',
+  CANCELLED: 'Cancelled',
+  DECLINED: 'Declined',
+};
 
 export function RestaurantBookings() {
-  const db = useAppStore((s) => s.db);
-  const restaurantId = useAppStore((s) => s.session.restaurantId);
-  const confirmBooking = useAppStore((s) => s.confirmBooking);
+  const [status, setStatus] = useState<BookingStatus | ''>('');
+  const [page, setPage] = useState(0);
 
-  const restaurant = db.restaurants.find((r) => r.id === restaurantId);
-  if (!restaurant) {
-    return <NoData message="Switch portal and pick a restaurant to continue." />;
-  }
+  const list = useResource(
+    useCallback(
+      () => bookingsApi.list('restaurant', { status: status || undefined, page, size: 20 }),
+      [status, page],
+    ),
+    [status, page],
+  );
 
-  const bookings = db.bookings
-    .filter((b) => b.restaurantId === restaurant.id)
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const change = useMutation(async (id: number, next: BookingStatus) =>
+    bookingsApi.changeStatus('restaurant', id, next),
+  );
 
-  const requested = bookings.filter((b) => b.status === 'requested').length;
+  const bookings = list.data?.items ?? [];
+  const total = list.data?.total ?? 0;
+  const size = list.data?.size ?? 20;
+  const lastPage = Math.max(Math.ceil(total / size) - 1, 0);
 
   return (
     <div className="space-y-gutter">
       <SectionHeading
         title="Table bookings"
         subtitle={
-          requested > 0
-            ? `${requested} request${requested === 1 ? '' : 's'} waiting on a reply.`
-            : 'All requests have been answered.'
+          status
+            ? `Filtered by ${LABELS[status].toLowerCase()}.`
+            : 'Creator table requests for your venue.'
+        }
+        action={
+          <div className="flex flex-wrap items-center gap-space-sm">
+            <select
+              aria-label="Filter by status"
+              className="rounded-lg border border-outline-variant/50 bg-surface-container-lowest px-space-sm py-space-sm text-body-md text-body-md text-on-surface"
+              value={status}
+              onChange={(event) => {
+                setStatus(event.target.value as BookingStatus | '');
+                setPage(0);
+              }}
+            >
+              <option value="">All statuses</option>
+              {Object.keys(LABELS).map((key) => (
+                <option key={key} value={key}>
+                  {LABELS[key as BookingStatus]}
+                </option>
+              ))}
+            </select>
+            <Button variant="secondary" onClick={list.reload}>
+              Refresh
+            </Button>
+          </div>
         }
       />
 
-      {bookings.length === 0 ? (
+      {change.error ? <Callout tone="error">{change.error.message}</Callout> : null}
+
+      {list.error ? (
+        <ErrorState
+          message={list.error.message}
+          isNetworkError={list.error.isNetworkError}
+          onRetry={list.reload}
+        />
+      ) : list.loading ? (
+        <LoadingState label="Loading bookings…" />
+      ) : bookings.length === 0 ? (
         <EmptyState title="No bookings" hint="Creator table requests will land here." />
       ) : (
         <ul className="space-y-space-sm">
           {bookings.map((booking) => {
-            const creator = db.creators.find((c) => c.id === booking.creatorId);
-            const campaign = booking.campaignId
-              ? db.campaigns.find((c) => c.id === booking.campaignId)
-              : undefined;
-
+            const next = allowedNextStatuses(booking.status, 'restaurant');
             return (
               <Card as="li" key={booking.id} className="p-gutter">
                 <div className="flex flex-wrap items-start justify-between gap-space-md">
                   <div>
                     <p className="font-headline-sm text-headline-sm text-on-surface">
-                      {formatDate(booking.date)} · party of {booking.partySize}
-                    </p>
-                    <p className="text-body-sm text-body-sm text-on-surface-variant">
-                      {creator?.displayName}
-                      {campaign ? ` · via “${campaign.title}”` : ''}
+                      {formatDate(booking.visitDate)} · party of {booking.partySize}
                     </p>
                     <p className="text-body-sm text-body-sm text-on-surface-variant">
                       Requested {formatRelative(booking.createdAt)}
@@ -76,13 +131,21 @@ export function RestaurantBookings() {
                     ) : null}
                   </div>
 
-                  <div className="flex items-center gap-space-sm">
-                    <Badge className={TONES[booking.status]}>
-                      <span className="capitalize">{booking.status}</span>
-                    </Badge>
-                    {booking.status === 'requested' ? (
-                      <Button onClick={() => confirmBooking(booking.id)}>Confirm</Button>
-                    ) : null}
+                  <div className="flex flex-wrap items-center gap-space-sm">
+                    <Badge className={TONES[booking.status]}>{LABELS[booking.status]}</Badge>
+                    {next.map((target) => (
+                      <Button
+                        key={target}
+                        variant={target === 'CONFIRMED' ? 'primary' : 'secondary'}
+                        disabled={change.pending}
+                        onClick={async () => {
+                          const result = await change.run(booking.id, target);
+                          if (result) list.reload();
+                        }}
+                      >
+                        {target === 'CONFIRMED' ? 'Confirm' : LABELS[target]}
+                      </Button>
+                    ))}
                   </div>
                 </div>
               </Card>
@@ -90,6 +153,20 @@ export function RestaurantBookings() {
           })}
         </ul>
       )}
+
+      {total > size ? (
+        <div className="flex items-center justify-between gap-space-sm">
+          <Button variant="ghost" disabled={page === 0} onClick={() => setPage(page - 1)}>
+            Previous
+          </Button>
+          <span className="text-body-sm text-body-sm text-on-surface-variant">
+            Page {page + 1} of {lastPage + 1}
+          </span>
+          <Button variant="ghost" disabled={page >= lastPage} onClick={() => setPage(page + 1)}>
+            Next
+          </Button>
+        </div>
+      ) : null}
 
       <p className={cn('text-body-sm text-body-sm text-on-surface-variant')}>
         Bookings are requests, not revenue — they are tracked separately from redemptions so a

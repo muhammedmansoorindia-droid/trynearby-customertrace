@@ -1,43 +1,45 @@
 /**
- * Scan &amp; redeem — the restaurant's front desk.
+ * Scan & redeem — the restaurant's front desk.
  *
- * This is where the product's core distinction becomes physical. Scanning a pass records a
- * `ScanEvent` and *nothing else*: no customer is credited, no discount is promised. Only the
- * separate "record redemption" step, which asks for the bill, writes a `Redemption` — and
- * only that is a verified customer.
+ * <p>This is where the product's core distinction becomes physical, and it maps onto two separate
+ * backend endpoints:
  *
- * Camera scanning is offered via `jsQR`, but the demo must also work on a laptop with no
- * webcam and in an automated test, so manual code entry is a peer of the camera rather than a
- * fallback afterthought.
+ * <ul>
+ *   <li>`POST /scan` records that a code was *seen*. It never creates a customer.</li>
+ *   <li>`POST /redeem` confirms a verified customer visit, and is the only call that creates one.</li>
+ * </ul>
+ *
+ * <p>All validation lives on the server, so this screen never re-implements the promo-code rules:
+ * it shows the backend's own message and adds staff guidance. Camera scanning via `jsQR` is a peer
+ * of manual entry rather than a fallback, because a laptop at the desk may have no webcam.
  */
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 
-import { NoData } from '@/app/PortalLayout';
-import { useAppStore } from '@/app/store';
+import { useMutation, useResource } from '@/app/useResource';
 import { Badge, Button, Callout, Card, Field, SectionHeading, inputClass } from '@/app/ui';
-import { REDEEMABLE_STATUSES } from '@/services/campaignWorkflow';
-import { normalizeCode, validatePromoCode } from '@/services/promoCode';
-import type { Redemption } from '@/types/models';
-import { formatINR, formatTime, toDateKey } from '@/utils/format';
+import { explainScanError, scanApi } from '@/services/backend/scan';
+import { campaignsApi } from '@/services/backend/campaigns';
+import { formatINR, formatTime } from '@/utils/format';
+
+/** Uppercase codes only; the backend is case-sensitive. */
+function normalize(raw: string): string {
+  return raw.trim().toUpperCase();
+}
 
 type Verdict =
   | { kind: 'idle' }
-  | { kind: 'accepted'; campaignId: string }
+  | { kind: 'scanned'; campaignTitle: string; offerText: string }
   | { kind: 'refused'; reason: string };
 
 export function RestaurantScanner() {
-  const db = useAppStore((s) => s.db);
-  const restaurantId = useAppStore((s) => s.session.restaurantId);
-  const recordScan = useAppStore((s) => s.recordScan);
-  const recordRedemption = useAppStore((s) => s.recordRedemption);
-
   const [entry, setEntry] = useState('');
   const [verdict, setVerdict] = useState<Verdict>({ kind: 'idle' });
   const [bill, setBill] = useState('');
-  const [channel, setChannel] = useState<Redemption['channel']>('dine_in');
+  const [channel, setChannel] = useState<'DINE_IN' | 'TAKEAWAY' | 'DELIVERY'>('DINE_IN');
   const [staff, setStaff] = useState('');
-  const [confirmed, setConfirmed] = useState<Redemption | null>(null);
+  const [confirmed, setConfirmed] = useState<{ bill: number; customers: number } | null>(null);
+  const [scannedCode, setScannedCode] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -45,15 +47,16 @@ export function RestaurantScanner() {
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
-  const restaurant = db.restaurants.find((r) => r.id === restaurantId);
-  const campaigns = db.campaigns.filter(
-    (c) => c.restaurantId === restaurantId && REDEEMABLE_STATUSES.includes(c.status),
+  // Live codes for the venue, so staff can tap instead of typing.
+  const live = useResource(
+    useCallback(async () => {
+      const page = await campaignsApi.listForRestaurant({ status: 'ACTIVE' });
+      return page.content.filter((c) => c.promoCode);
+    }, []),
+    [],
   );
-  const activeCampaign =
-    verdict.kind === 'accepted' ? db.campaigns.find((c) => c.id === verdict.campaignId) : undefined;
 
-
-  // ── Camera ────────────────────────────────────────────────────────────
+  // ── Camera ────────────────────────────────────────────────────────────────
   const stopCamera = useCallback(() => {
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
@@ -83,109 +86,94 @@ export function RestaurantScanner() {
 
       const canvas = canvasRef.current;
       const ctx = canvas?.getContext('2d');
-      if (!canvas || !ctx) {
-        stopCamera();
-        return;
-      }
-
-      streamRef.current = stream;
-      setCameraOn(true);
+      if (!ctx) throw new Error('no canvas context');
 
       const tick = () => {
-        if (!streamRef.current) return;
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const found = jsQR(image.data, image.width, image.height);
-        if (found?.data) {
-          setEntry(found.data);
-          stopCamera();
-          return;
+        if (video.readyState === video.HAVE_ENOUGH_DATA && canvas) {
+          canvas.height = video.videoHeight;
+          canvas.width = video.videoWidth;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const found = jsQR(image.data, image.width, image.height);
+          if (found?.data) {
+            setEntry(normalize(found.data));
+            stopCamera();
+            return;
+          }
         }
         rafRef.current = requestAnimationFrame(tick);
       };
       rafRef.current = requestAnimationFrame(tick);
+      setCameraOn(true);
     } catch {
+      // Permission denial and no-camera both land here; manual entry still works.
       setCameraError('Camera permission was declined. Type the code instead.');
     }
   };
 
-  // ── Validation ────────────────────────────────────────────────────────
-  const check = (): Verdict => {
-    if (!restaurant) return { kind: 'refused', reason: 'No restaurant selected.' };
-    const raw = entry.trim();
-    if (!raw) return { kind: 'refused', reason: 'Enter or scan a promo code first.' };
+  // ── Actions ───────────────────────────────────────────────────────────────
 
-    const result = validatePromoCode({
-      rawCode: raw,
-      restaurantId: restaurant.id,
-      now: new Date(),
-      ledger: { records: db.promoCodes, redemptions: db.redemptions },
-      getCampaign: (id) => db.campaigns.find((c) => c.id === id),
+  /**
+   * Looks the code up, then records the scan.
+   *
+   * <p>Two calls, deliberately: `lookup` is read-only and gives staff the campaign details to
+   * check against the customer in front of them; `scan` is the only write. If the scan is
+   * refused, nothing is counted and the backend's reason is shown.
+   */
+  const check = useMutation(async (raw: string) => {
+    const code = normalize(raw);
+    const found = await scanApi.lookup(code);
+    const result = await scanApi.scan(code, 'MANUAL', 'Front counter');
+    return { code, found, result };
+  });
+
+  const onCheck = async () => {
+    setConfirmed(null);
+    setScannedCode(null);
+    const outcome = await check.run(entry);
+    if (!outcome) return;
+
+    // The scan endpoint can accept the code but still report it invalid; trust its verdict.
+    if (!outcome.result.valid) {
+      setVerdict({ kind: 'refused', reason: outcome.result.message });
+      return;
+    }
+    setScannedCode(outcome.code);
+    setVerdict({
+      kind: 'scanned',
+      campaignTitle: outcome.result.campaignTitle ?? outcome.found.campaignTitle,
+      offerText: outcome.result.offerText ?? outcome.found.offerText,
     });
-
-    if (!result.ok) return { kind: 'refused', reason: result.message };
-
-    // A valid scan is logged as its own event. It counts as *interest* and never as a
-    // customer — that separation is the entire point of this screen.
-    recordScan({
-      campaignId: result.value.campaign.id,
-      restaurantId: restaurant.id,
-      creatorId: db.campaigns.find((c) => c.id === result.value.campaign.id)?.creatorId ?? '',
-      method: 'promo_manual',
-      promoCode: normalizeCode(raw),
-      scannedAt: new Date().toISOString(),
-      customerRef: null,
-      result: 'valid',
-      deviceLabel: 'Front counter',
-    });
-
-    return { kind: 'accepted', campaignId: result.value.campaign.id };
   };
 
-  const submitRedemption = (event: FormEvent) => {
+  const submitRedemption = useMutation(async (code: string) => {
+    const amountPaise = Math.round(Number(bill) * 100);
+    return scanApi.redeem({ promoCode: code, billPaise: amountPaise, channel });
+  });
+
+  const onRedeem = async (event: FormEvent) => {
     event.preventDefault();
-    if (!restaurant || !activeCampaign) return;
+    if (!scannedCode || !Number(bill)) return;
 
-    const amount = Number(bill);
-    if (!amount || amount <= 0) return;
+    const billRupees = Number(bill);
+    const result = await submitRedemption.run(scannedCode);
+    if (!result) return;
 
-    const record: Omit<Redemption, 'id'> = {
-      campaignId: activeCampaign.id,
-      restaurantId: restaurant.id,
-      creatorId: activeCampaign.creatorId,
-      promoCode: activeCampaign.promoCode ?? '',
-      scanEventId: null,
-      customerRef: null,
-      redeemedAt: new Date().toISOString(),
-      billAmountInPaise: Math.round(amount * 100),
-      discountAmountInPaise: Math.round((amount * 100 * activeCampaign.discountPercent) / 100),
-      channel,
-      tableOrChannelRef: channel === 'dine_in' ? 'Front counter' : undefined,
-      staffName: staff.trim() || undefined,
-      visitDate: toDateKey(),
-    };
-
-    recordRedemption(record);
-    setConfirmed({ ...record, id: 'just-recorded' });
+    setConfirmed({ bill: billRupees, customers: result.verifiedCustomers });
     setBill('');
     setStaff('');
+    setScannedCode(null);
+    setVerdict({ kind: 'idle' });
+    setEntry('');
   };
 
-  if (!restaurant) {
-    return <NoData message="Switch portal and pick a restaurant to continue." />;
-  }
-
-  const discountPaise = activeCampaign
-    ? Math.round((Number(bill || 0) * 100 * activeCampaign.discountPercent) / 100)
-    : 0;
+  const billError = bill && Number(bill) <= 0 ? 'Enter a bill amount greater than zero.' : null;
 
   return (
     <div className="space-y-gutter">
       <SectionHeading
         title="Scan & redeem"
-        subtitle={`Front desk at ${restaurant.name}. A scan proves interest; a redemption proves a customer.`}
+        subtitle="A scan proves interest; a redemption proves a customer."
       />
 
       <Callout tone="info">
@@ -198,29 +186,23 @@ export function RestaurantScanner() {
         <Card className="space-y-space-md p-gutter">
           <Field
             label="Promo code"
-            hint="Format LLNNDDX, e.g. MK4014E. Case and spacing do not matter."
+            hint="Seven characters. Typed codes and QR passes behave identically."
           >
             <div className="flex gap-space-sm">
               <input
                 className={inputClass}
                 value={entry}
-                onChange={(event) => {
-                  setEntry(event.target.value);
-                  setVerdict({ kind: 'idle' });
-                  setConfirmed(null);
+                onChange={(event) => setEntry(event.target.value.toUpperCase())}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && entry.trim()) void onCheck();
                 }}
                 placeholder="MK4014E"
                 autoComplete="off"
                 spellCheck={false}
+                maxLength={7}
               />
-              <Button
-                onClick={() => {
-                  setVerdict(check());
-                  setConfirmed(null);
-                }}
-                disabled={!entry.trim()}
-              >
-                Check
+              <Button onClick={() => void onCheck()} disabled={!entry.trim() || check.pending}>
+                {check.pending ? 'Checking…' : 'Check'}
               </Button>
             </div>
           </Field>
@@ -243,13 +225,13 @@ export function RestaurantScanner() {
           {cameraError ? <Callout tone="error">{cameraError}</Callout> : null}
           <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
 
-          {campaigns.length > 0 ? (
+          {live.data?.length ? (
             <div>
               <p className="mb-space-xs font-label-md text-label-md text-on-surface">
                 Or tap a live code
               </p>
               <div className="flex flex-wrap gap-space-xs">
-                {campaigns.map((campaign) => (
+                {live.data.map((campaign) => (
                   <button
                     key={campaign.id}
                     type="button"
@@ -261,13 +243,22 @@ export function RestaurantScanner() {
                       px-space-sm py-space-xs font-mono text-body-sm text-body-sm text-on-surface
                       transition-colors hover:bg-surface-container-high"
                   >
+                    {campaign.promoCode}
                   </button>
                 ))}
               </div>
             </div>
           ) : null}
         </Card>
+
         <Card className="space-y-space-md p-gutter">
+          {check.error ? (
+            <Callout tone="error">
+              <strong className="block font-label-md">Could not check that code</strong>
+              {explainScanError(check.error.code, check.error.message)}
+            </Callout>
+          ) : null}
+
           {verdict.kind === 'refused' ? (
             <Callout tone="error">
               <strong className="block font-label-md">Code refused</strong>
@@ -275,19 +266,16 @@ export function RestaurantScanner() {
             </Callout>
           ) : null}
 
-          {verdict.kind === 'accepted' && activeCampaign ? (
+          {verdict.kind === 'scanned' ? (
             <>
               <Callout tone="success">
                 <strong className="block font-label-md">Valid code</strong>
-                {activeCampaign.title} — {activeCampaign.offerText}. A scan has been logged; no
-                customer counted yet.
+                {verdict.campaignTitle} — {verdict.offerText}. A scan has been logged; no customer
+                counted yet.
               </Callout>
 
-              <form className="space-y-space-md" onSubmit={submitRedemption}>
-                <Field
-                  label="Bill amount (₹)"
-                  hint={`Discount: ${activeCampaign.discountPercent}%`}
-                >
+              <form className="space-y-space-md" onSubmit={onRedeem}>
+                <Field label="Bill amount (₹)" hint="Required — a redemption is a settled visit.">
                   <input
                     className={inputClass}
                     type="number"
@@ -299,16 +287,23 @@ export function RestaurantScanner() {
                     required
                   />
                 </Field>
+                {billError ? (
+                  <p role="alert" className="text-body-sm text-body-sm text-error">
+                    {billError}
+                  </p>
+                ) : null}
 
                 <Field label="Channel">
                   <select
                     className={inputClass}
                     value={channel}
-                    onChange={(event) => setChannel(event.target.value as Redemption['channel'])}
+                    onChange={(event) =>
+                      setChannel(event.target.value as 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY')
+                    }
                   >
-                    <option value="dine_in">Dine in</option>
-                    <option value="takeaway">Takeaway</option>
-                    <option value="delivery">Delivery</option>
+                    <option value="DINE_IN">Dine in</option>
+                    <option value="TAKEAWAY">Takeaway</option>
+                    <option value="DELIVERY">Delivery</option>
                   </select>
                 </Field>
 
@@ -321,27 +316,25 @@ export function RestaurantScanner() {
                   />
                 </Field>
 
-                {Number(bill) > 0 ? (
-                  <p className="text-body-md text-body-md text-on-surface">
-                    Apply <strong className="text-primary">{formatINR(discountPaise)}</strong>{' '}
-                    discount — customer pays{' '}
-                    {formatINR(Math.round(Number(bill) * 100) - discountPaise)}.
-                  </p>
-                ) : null}
-
-                <Button type="submit" disabled={!Number(bill)}>
-                  Record redemption
+                <Button type="submit" disabled={!Number(bill) || submitRedemption.pending}>
+                  {submitRedemption.pending ? 'Recording…' : 'Record redemption'}
                 </Button>
               </form>
             </>
           ) : null}
 
+          {submitRedemption.error ? (
+            <Callout tone="error">
+              <strong className="block font-label-md">Redemption refused</strong>
+              {explainScanError(submitRedemption.error.code, submitRedemption.error.message)}
+            </Callout>
+          ) : null}
+
           {confirmed ? (
             <Callout tone="success">
               <strong className="block font-label-md">Redemption recorded</strong>
-              {formatINR(confirmed.discountAmountInPaise)} off a{' '}
-              {formatINR(confirmed.billAmountInPaise)} bill at{' '}
-              {formatTime(confirmed.redeemedAt)}. This diner is now a verified customer.
+              {formatINR(confirmed.bill)} bill settled at {formatTime(new Date().toISOString())}. This diner is now
+              a verified customer — {confirmed.customers} so far on this campaign.
             </Callout>
           ) : null}
 
@@ -353,54 +346,6 @@ export function RestaurantScanner() {
           ) : null}
         </Card>
       </div>
-
-      <RecentActivity restaurantId={restaurant.id} />
     </div>
-  );
-}
-
-/** The last few events at this venue, newest first — the audit trail staff actually need. */
-function RecentActivity({ restaurantId }: { restaurantId: string }) {
-  const db = useAppStore((s) => s.db);
-
-  const scans = db.scans
-    .filter((s) => s.restaurantId === restaurantId)
-    .sort((a, b) => b.scannedAt.localeCompare(a.scannedAt))
-    .slice(0, 8);
-
-  if (scans.length === 0) return null;
-
-  return (
-    <Card className="p-gutter">
-      <h3 className="mb-space-md font-headline-sm text-headline-sm text-on-surface">
-        Recent scans at your venue
-      </h3>
-      <ul className="divide-y divide-outline-variant/20">
-        {scans.map((scan) => {
-          const campaign = db.campaigns.find((c) => c.id === scan.campaignId);
-          return (
-            <li
-              key={scan.id}
-              className="flex flex-wrap items-center justify-between gap-space-sm py-space-xs"
-            >
-              <div>
-                <p className="font-mono text-body-sm text-body-sm text-on-surface">
-                  {scan.promoCode}
-                </p>
-                <p className="text-body-sm text-body-sm text-on-surface-variant">
-                  {campaign?.title} · {scan.method === 'qr' ? 'QR pass' : 'Typed code'}
-                </p>
-              </div>
-              <span className="text-body-sm text-body-sm text-on-surface-variant">
-                {formatTime(scan.scannedAt)}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-      <p className="mt-space-sm text-body-sm text-body-sm text-on-surface-variant">
-        Scans are interest only — they are deliberately excluded from every customer count.
-      </p>
-    </Card>
   );
 }
