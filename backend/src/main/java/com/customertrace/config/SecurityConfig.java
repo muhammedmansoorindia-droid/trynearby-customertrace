@@ -91,6 +91,9 @@ public class SecurityConfig {
                 // sub-resources use a trailing wildcard only.
                 .requestMatchers("/api/restaurants/*/creators", "/api/restaurants/*/creators/**")
                     .hasAnyRole("RESTAURANT", "ADMIN")
+                // A restaurant's public review profile is readable by any signed-in user, so it must be
+                // matched before the broader /api/restaurants/** restaurant-only rule below.
+                .requestMatchers("/api/restaurants/*/reviews").authenticated()
                 .requestMatchers("/api/restaurants/**").hasRole("RESTAURANT")
                 .requestMatchers("/api/creator/**").hasRole("CREATOR")
                 .requestMatchers("/api/auth/me", "/api/notifications/**").authenticated()
