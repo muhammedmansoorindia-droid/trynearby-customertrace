@@ -100,6 +100,73 @@ export function StatTile({
  * show.
  */
 
+// ── Async states ────────────────────────────────────────────────────────
+
+/**
+ * The three states every API-backed screen must be able to render.
+ *
+ * <p>Kept together so a screen cannot accidentally invent a fourth pattern — in particular it
+ * cannot omit the error state, which is how mock data tends to creep back in.
+ */
+
+/** Placeholder shown while the first request is in flight. */
+export function LoadingState({ label = 'Loading…' }: { label?: string }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      data-testid="loading-state"
+      className="flex items-center gap-space-sm rounded-xl border border-outline-variant/30 bg-surface-container-lowest px-gutter py-gutter text-body-md text-body-md text-on-surface-variant"
+    >
+      <span
+        aria-hidden="true"
+        className="h-4 w-4 animate-spin rounded-full border-2 border-outline-variant border-t-primary"
+      />
+      {label}
+    </div>
+  );
+}
+
+/**
+ * Renders a failed request, with a retry affordance.
+ *
+ * <p>A connection failure says so explicitly: telling a user "something went wrong" when the API
+ * is simply not running wastes their time.
+ */
+export function ErrorState({
+  title = 'Could not load this data',
+  message,
+  isNetworkError = false,
+  onRetry,
+}: {
+  title?: string;
+  message: string;
+  isNetworkError?: boolean;
+  onRetry?: () => void;
+}) {
+  return (
+    <div
+      role="alert"
+      data-testid="error-state"
+      className="rounded-xl border border-error/40 bg-error-container/20 px-gutter py-gutter"
+    >
+      <p className="font-label-md text-label-md text-on-surface">{title}</p>
+      <p className="text-body-sm text-body-sm text-on-surface-variant mt-1">
+        {isNetworkError
+          ? 'Could not reach the Customer Trace API. Check that the backend is running.'
+          : message}
+      </p>
+      {onRetry ? (
+        <div className="mt-space-md">
+          <Button variant="secondary" onClick={onRetry}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // ── Feedback ───────────────────────────────────────────────────────────
 
 export function Badge({ children, className }: { children: ReactNode; className?: string }) {
@@ -144,7 +211,10 @@ export function Callout({
 
 export function EmptyState({ title, hint }: { title: string; hint?: string }) {
   return (
-    <div className="rounded-xl border border-dashed border-outline-variant/50 px-space-lg py-space-xl text-center">
+    <div
+      data-testid="empty-state"
+      className="rounded-xl border border-dashed border-outline-variant/50 px-space-lg py-space-xl text-center"
+    >
       <p className="font-headline-sm text-headline-sm text-on-surface">{title}</p>
       {hint ? (
         <p className="text-body-sm text-body-sm text-on-surface-variant mt-1">{hint}</p>
