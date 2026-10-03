@@ -261,7 +261,7 @@ mvn clean test        # 119 tests
 mvn clean verify      # full verification, produces target/backend-1.0.0.jar
 
 # Frontend
-npm run test          # 109 tests (vitest)
+npm run test          # 112 tests (vitest); 2 live tests skipped unless QA_LIVE=1
 npx tsc -b            # type check
 npm run build         # production build
 ```
@@ -323,6 +323,30 @@ screen renders, which is what keeps mock data from creeping back in.
 | `/creator/bookings` | `creator/bookings` | `creator/bookings`, `creator/bookings/{id}/status` |
 | `/creator/reviews` | `creator/reviews`, `creator/assignments` | `creator/reviews`, `creator/reviews/{id}` |
 | `/notifications` | `notifications`, `notifications/unread-count` | `notifications/{id}/read`, `notifications/read-all` |
+
+### Tests that need a running backend
+
+`src/app/live.integration.test.tsx` renders the **real** UI components against a **real** backend —
+`fetch` is not stubbed. It is opt-in so the default suite stays green offline:
+
+```bash
+# 1. start the backend as above (it must be on http://localhost:8080)
+# 2. run the live tests
+QA_LIVE=1 npx vitest run src/app/live.integration.test.tsx
+```
+
+These are the tests that catch contract drift between the client and the server, which mocked
+fixtures cannot: they caught the campaign list returning a bare JSON array where the client
+expected a page envelope, which had blanked every campaign screen in production.
+
+### The campaign list response shape
+
+`GET /api/{admin,creator}/campaigns` and `GET /api/restaurants/campaigns` paginate with
+`page`/`size` but **serialise the page as a bare JSON array**, not Spring's
+`{content, totalElements}` envelope. `fetchScoped` in `src/services/backend/campaigns.ts`
+normalises either shape, so a future backend change to a real envelope is also accepted. The
+bookings and notifications endpoints *do* return envelopes (`{items, total, …}`); the two are
+deliberately normalised in their own modules.
 
 ## Known limitations
 
