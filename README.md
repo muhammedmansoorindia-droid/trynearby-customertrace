@@ -155,6 +155,49 @@ With the backend running:
 | Admin campaigns | `GET /api/admin/campaigns`, `/{id}`, `/{id}/history`; `POST /{id}/approve`, `/{id}/reject` |
 | Restaurant campaigns | `GET /api/restaurants/campaigns`, `/{id}`, `/{id}/history`; `POST /{id}/approve`, `/{id}/reject` |
 | Scans & redemptions | `GET /api/restaurants/scan/lookup`; `POST /api/restaurants/scan/scan`; `POST /api/restaurants/scan/redeem` |
+| Reports | `GET /api/reports/platform/{summary,campaigns,trend}`; `GET /api/reports/restaurant/{summary,campaigns,trend,status-breakdown}`; `GET /api/reports/creator/{summary,campaigns,trend,status-breakdown}` |
+| Notifications | `GET /api/notifications`, `/unread-count`; `POST /api/notifications/{id}/read`, `/read-all` |
+| Bookings | `POST /api/creator/bookings`; `GET /api/{creator,restaurant,admin}/bookings`, `/{id}`; `PATCH /{id}/status` |
+| Reviews | `POST /api/creator/reviews`; `PUT /api/creator/reviews/{id}`; `GET /api/creator/reviews`, `/restaurant/{id}`; `GET /api/restaurant/reviews`; `GET /api/restaurants/{id}/reviews` |
+| Subscriptions | `GET /api/restaurant/subscription`, `/subscriptions`; `GET /api/plans`; `PUT /api/admin/subscriptions/{id}/plan`; `PATCH /api/admin/subscriptions/{id}/status` |
+| Assignments | `GET /api/restaurant/assignments`, `/api/creator/assignments`, `/api/admin/assignments`; `POST /api/restaurant/assignments`, `/api/admin/assignments`; `DELETE /api/restaurant/assignments/{id}`, `/api/admin/assignments/{id}`; `POST /api/admin/assignments/{id}/reactivate` |
+
+All report routes accept optional `from` and `to` query parameters (`yyyy-MM-dd`, inclusive, max
+366 days); an inverted range is a `400` rather than a silent zero.
+
+### Authorization rules
+
+Ownership is re-derived from the authenticated principal on every request — a user-supplied
+restaurant or creator id is never trusted. Where a record belongs to another tenant the API answers
+`404`, not `403`, so ids cannot be probed.
+
+| Capability | Admin | Restaurant | Creator |
+|---|---|---|---|
+| Platform reports | yes | no | no |
+| Own reports | — | own restaurant only | own campaigns only |
+| Bookings | all | own restaurant's | own |
+| Confirm / decline / complete a booking | yes | yes (own) | no |
+| Cancel a booking | yes | no | yes (own) |
+| Create a review | no | no | yes, if assigned |
+| Edit a review | no | no | own only |
+| Change plan / subscription status | yes | no | no |
+| Manage assignments | any | own restaurant only | no |
+
+### State transitions
+
+Transitions are enforced server-side against an explicit allow-list; anything else returns `409
+INVALID_STATUS_TRANSITION` and writes nothing.
+
+- **Booking** — `REQUESTED → CONFIRMED | DECLINED | CANCELLED`; `CONFIRMED → COMPLETED |
+  CANCELLED`. `COMPLETED`, `CANCELLED` and `DECLINED` are terminal. Every accepted change writes a
+  `booking_status_history` row in the same transaction.
+- **Subscription** — `TRIALING → ACTIVE | CANCELLED`; `ACTIVE → PAST_DUE | CANCELLED`;
+  `PAST_DUE → ACTIVE | CANCELLED`. `CANCELLED` is terminal. The amount always comes from the plan,
+  never from the request.
+- **Assignment** — a duplicate active pair is refused with `409 ASSIGNMENT_EXISTS`; deactivating an
+  already-inactive row is refused rather than silently succeeding.
+- **Review** — one review per creator/restaurant/campaign; a creator may edit their own rather than
+  posting a second. Eligibility is an active assignment, re-read from the database.
 
 **Campaign workflow, enforced server-side:** a submitted campaign becomes `ACTIVE` only after
 **both** the TryNearby administrator and the restaurant approve. Either party rejecting makes it
@@ -198,7 +241,7 @@ curl -X POST localhost:8080/api/restaurants/scan/redeem -H "Authorization: Beare
 ```bash
 # Backend — unit + integration tests
 cd backend
-mvn clean test        # 54 tests
+mvn clean test        # 119 tests
 mvn clean verify      # full verification, produces target/backend-1.0.0.jar
 
 # Frontend
@@ -232,15 +275,13 @@ distinction including duplicate prevention and cross-tenant denial.
 
 Stated plainly so nothing here is mistaken for finished work:
 
-* **Portal dashboards still read the local demo store.** Sign-in, the API client and the
-  campaign/scan endpoints are wired to the backend, but the dashboard, campaign-list and scanner
-  screens have not been migrated from their local demo data to API calls.
-* **Reports and analytics endpoints are not implemented** for any of the three portals.
-* **Bookings, reviews, subscriptions, creator assignment and notifications** have schema support
-  only; the REST layers are still to come, so those UI screens remain demo-backed.
-* **Concurrent-redemption testing is indirect.** Duplicate prevention is covered by the
-  same-day unique key and a sequential integration test; a genuinely concurrent multi-threaded
-  test has not been written, so the race is prevented by the database constraint rather than
-  demonstrated under load.
+* **Portal dashboards still read the local demo store.** Every backend area below is implemented and
+  tested, but the dashboard, campaign-list and scanner screens have not been migrated from their
+  local demo data to API calls.
+* **The booking flow does not yet enforce an assignment at creation time.** A creator may request a
+  booking at any existing restaurant; review eligibility *is* gated on an active assignment.
+* **Report rows are capped** at 200 campaigns per response and at a 366-day range, so a very large
+  tenant needs paged access rather than one unbounded response.
 * Payment processing is intentionally not integrated; `subscriptions.external_ref` is reserved for
-  a future provider.
+  a future provider. Plan and status changes are administrator-driven records, never a simulated
+  payment.
