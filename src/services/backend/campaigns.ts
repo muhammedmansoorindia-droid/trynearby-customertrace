@@ -75,16 +75,45 @@ export interface CreateCampaignRequest {
   endDate: string;
 }
 
-/** Spring's page envelope for the paged campaign lists. */
+/**
+ * The campaign lists as the backend actually returns them.
+ *
+ * <p>These endpoints paginate server-side with `page`/`size` but serialise the page as a **bare
+ * JSON array**, not Spring's `{content, totalElements}` envelope. Normalising here keeps the
+ * screens reading one consistent shape, and {@link totalElements} reports the rows returned on
+ * this page — the backend does not expose a separate count.
+ */
 export interface Page<T> {
   content: T[];
+  /** Rows on this page. The backend sends no separate total, so this is the page length. */
   totalElements: number;
-  totalPages: number;
-  number: number;
+  page: number;
   size: number;
 }
 
-const PAGE_PARAM = 'page=0&size=50';
+const DEFAULT_PAGE = 0;
+const DEFAULT_SIZE = 50;
+
+/**
+ * Normalises a campaign list response into the page shape the screens consume.
+ *
+ * <p>Accepts either a bare array (what the backend sends) or an envelope (in case that changes),
+ * so a future backend fix cannot silently blank these screens again.
+ */
+function toPage<T>(body: unknown, page: number, size: number): Page<T> {
+  if (Array.isArray(body)) {
+    const content = body as T[];
+    return { content, totalElements: content.length, page, size };
+  }
+  const envelope = body as Partial<Page<T>> | null;
+  const content = envelope?.content ?? [];
+  return {
+    content,
+    totalElements: envelope?.totalElements ?? content.length,
+    page: envelope?.page ?? page,
+    size: envelope?.size ?? size,
+  };
+}
 
 /**
  * Maps a backend status onto the vocabulary the existing UI helpers already speak.
@@ -121,6 +150,10 @@ function toBackendStatus(value: string): BackendCampaignStatus | undefined {
 export interface CampaignQuery {
   status?: string;
   search?: string;
+  /** Zero-based page index passed straight to the backend. */
+  page?: number;
+  /** Rows per page. */
+  size?: number;
 }
 
 /**
@@ -132,20 +165,25 @@ export interface CampaignQuery {
  */
 async function fetchScoped(base: string, query: CampaignQuery = {}): Promise<Page<Campaign>> {
   const status = query.status ? toBackendStatus(query.status) : undefined;
-  const params = new URLSearchParams(PAGE_PARAM);
+  const page = query.page ?? DEFAULT_PAGE;
+  const size = query.size ?? DEFAULT_SIZE;
+  const params = new URLSearchParams({ page: String(page), size: String(size) });
   if (status) params.set('status', status);
 
-  const page = await api.get<Page<Campaign>>(`${base}?${params.toString()}`);
-  const search = query.search?.trim().toLowerCase();
-  if (!search) return page;
+  const body = await api.get<unknown>(`${base}?${params.toString()}`);
+  const result = toPage<Campaign>(body, page, size);
 
-  const content = page.content.filter(
+  const search = query.search?.trim().toLowerCase();
+  if (!search) return result;
+
+  const content = result.content.filter(
     (c) =>
       c.title.toLowerCase().includes(search) ||
       (c.restaurantName ?? '').toLowerCase().includes(search) ||
       (c.creatorName ?? '').toLowerCase().includes(search),
   );
-  return { ...page, content };
+  // totalElements follows the filtered rows so the badge count matches what is displayed.
+  return { ...result, content, totalElements: content.length };
 }
 
 export const campaignsApi = {

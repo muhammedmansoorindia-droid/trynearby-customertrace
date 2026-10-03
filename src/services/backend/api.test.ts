@@ -91,7 +91,7 @@ describe('campaign status mapping', () => {
 
 describe('campaignsApi', () => {
   it('scopes each list to its portal path', async () => {
-    reply({ content: [], totalElements: 0 });
+    reply([]);
 
     await campaignsApi.listForAdmin();
     expect(urlOf(0)).toContain('/api/admin/campaigns');
@@ -103,32 +103,63 @@ describe('campaignsApi', () => {
     expect(urlOf(2)).toContain('/api/restaurants/campaigns');
   });
 
+  it('normalises the bare array the backend returns into a page', async () => {
+    // The backend serialises these lists as a plain JSON array, NOT Spring's page envelope.
+    // Reading `.content` off the raw body yields undefined and blanks every campaign screen.
+    const rows = [
+      { id: 1, title: 'One' },
+      { id: 2, title: 'Two' },
+    ];
+    reply(rows);
+
+    const page = await campaignsApi.listForAdmin();
+    expect(Array.isArray(page.content)).toBe(true);
+    expect(page.content).toHaveLength(2);
+    expect(page.totalElements).toBe(2);
+  });
+
+  it('still accepts a page envelope if the backend later returns one', async () => {
+    reply({ content: [{ id: 7, title: 'Seven' }], totalElements: 9, page: 1, size: 5 });
+
+    const page = await campaignsApi.listForAdmin();
+    expect(page.content[0].id).toBe(7);
+    // The server's own total wins, so a future envelope is not silently downgraded.
+    expect(page.totalElements).toBe(9);
+  });
+
+  it('passes page and size through to the backend', async () => {
+    reply([]);
+
+    await campaignsApi.listForCreator({ page: 2, size: 10 });
+    expect(urlOf(0)).toContain('page=2');
+    expect(urlOf(0)).toContain('size=10');
+  });
+
   it('passes a known status through as a filter', async () => {
-    reply({ content: [], totalElements: 0 });
+    reply([]);
 
     await campaignsApi.listForAdmin({ status: 'PENDING' });
     expect(urlOf(0)).toContain('status=PENDING');
   });
 
   it('ignores an unrecognised status rather than sending it to the server', async () => {
-    reply({ content: [], totalElements: 0 });
+    reply([]);
 
     await campaignsApi.listForAdmin({ status: 'NOT_A_STATUS' });
     expect(urlOf(0)).not.toContain('status=');
   });
 
   it('filters the fetched page by search term', async () => {
-    reply({
-        content: [
-          { id: 1, title: 'Biryani Bash', restaurantName: 'Copper', creatorName: 'Pooja' },
-          { id: 2, title: 'Dinner Special', restaurantName: 'Silver', creatorName: 'Asha' },
-        ],
-        totalElements: 2,
-      });
+    reply([
+      { id: 1, title: 'Biryani Bash', restaurantName: 'Copper', creatorName: 'Pooja' },
+      { id: 2, title: 'Dinner Special', restaurantName: 'Silver', creatorName: 'Asha' },
+    ]);
 
     const page = await campaignsApi.listForAdmin({ search: 'biryani' });
     expect(page.content).toHaveLength(1);
     expect(page.content[0].id).toBe(1);
+    // The count follows the filtered rows so a badge cannot disagree with the list.
+    expect(page.totalElements).toBe(1);
   });
 
   it('sends both halves of the dual-approval workflow to their own endpoints', async () => {
