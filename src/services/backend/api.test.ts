@@ -141,6 +141,19 @@ describe('campaignsApi', () => {
     expect(urlOf(1)).toContain('/api/restaurants/campaigns/5/approve');
   });
 
+  it('sends only a reason, because the route itself carries the decision', async () => {
+    reply({ id: 1 });
+
+    await campaignsApi.rejectAsAdmin(5, 'cannot be verified');
+
+    // The backend rejects a body containing a `decision` field as malformed, so the client must
+    // not invent one — the `/approve` vs `/reject` path *is* the decision.
+    expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)).toEqual({
+      reason: 'cannot be verified',
+    });
+    expect(urlOf(0)).toContain('/reject');
+  });
+
   it('takes the promo code from the server rather than minting it client-side', async () => {
     reply({ id: 5, promoCode: 'AB1234C' });
 

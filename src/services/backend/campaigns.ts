@@ -20,7 +20,8 @@ export type FrontendCampaignStatus =
   | 'completed'
   | 'cancelled';
 
-export type Decision = 'APPROVE' | 'REJECT';
+/** The decision values the backend records. Note the `-ED` ending, not `APPROVE`. */
+export type Decision = 'APPROVED' | 'REJECTED';
 
 export interface Campaign {
   id: number;
@@ -176,21 +177,20 @@ export const campaignsApi = {
    */
   submit: (id: number) => api.post<Campaign>(`/api/creator/campaigns/${id}/submit`),
 
-  /** The administrator's half of the dual-approval workflow. */
+  /**
+   * The administrator's half of the dual-approval workflow.
+   *
+   * <p>The decision is implied by the route (`/approve`, `/reject`), so the body carries only an
+   * optional reason. Sending a `decision` field would be rejected as malformed.
+   */
   approveAsAdmin: (id: number, reason?: string) =>
-    api.post<Campaign>(`/api/admin/campaigns/${id}/approve`, { decision: 'APPROVE', reason }),
+    api.post<Campaign>(`/api/admin/campaigns/${id}/approve`, { reason }),
   rejectAsAdmin: (id: number, reason?: string) =>
-    api.post<Campaign>(`/api/admin/campaigns/${id}/reject`, { decision: 'REJECT', reason }),
+    api.post<Campaign>(`/api/admin/campaigns/${id}/reject`, { reason }),
 
   /** The restaurant's half of the dual-approval workflow. */
   approveAsRestaurant: (id: number, reason?: string) =>
-    api.post<Campaign>(`/api/restaurants/campaigns/${id}/approve`, {
-      decision: 'APPROVE',
-      reason,
-    }),
+    api.post<Campaign>(`/api/restaurants/campaigns/${id}/approve`, { reason }),
   rejectAsRestaurant: (id: number, reason?: string) =>
-    api.post<Campaign>(`/api/restaurants/campaigns/${id}/reject`, {
-      decision: 'REJECT',
-      reason,
-    }),
+    api.post<Campaign>(`/api/restaurants/campaigns/${id}/reject`, { reason }),
 };

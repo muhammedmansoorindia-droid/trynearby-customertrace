@@ -108,9 +108,9 @@ export function CreatorCampaigns() {
                 {/* Says plainly whose approval is still outstanding. */}
                 {campaign.status === 'PENDING' ? (
                   <Callout tone="info">
-                    {campaign.adminDecision === 'APPROVE'
+                    {campaign.adminDecision === 'APPROVED'
                       ? 'TryNearby has approved. Waiting for the restaurant before it goes live.'
-                      : campaign.restaurantDecision === 'APPROVE'
+                      : campaign.restaurantDecision === 'APPROVED'
                         ? 'The restaurant has approved. Waiting for TryNearby before it goes live.'
                         : 'Submitted. Both TryNearby and the restaurant must approve before it goes live.'}
                   </Callout>
