@@ -106,7 +106,23 @@ java -jar target/backend-1.0.0.jar
 ```
 
 The frontend reads the API base URL from `VITE_API_BASE_URL`, defaulting to
-`http://localhost:8080`.
+`http://localhost:8080`. Set it in `.env.local` when the backend is not on the default port:
+
+```bash
+echo 'VITE_API_BASE_URL=http://localhost:8080' > .env.local
+```
+
+Then start the dev server:
+
+```bash
+npm run dev      # http://localhost:5173
+```
+
+**How the session works.** The access token is held in memory only and is never written to
+`localStorage`; the HttpOnly refresh cookie is the only thing that survives a reload. On boot the
+app calls `/api/auth/refresh` and then `/api/auth/me`, so signing in and restoring a session both
+go through the real API. Signing in redirects to `/trynearby`, `/restaurant` or `/creator`
+according to the role the backend reports.
 
 ### Database migrations
 
@@ -245,7 +261,7 @@ mvn clean test        # 119 tests
 mvn clean verify      # full verification, produces target/backend-1.0.0.jar
 
 # Frontend
-npm run test          # 80 tests (vitest)
+npm run test          # 109 tests (vitest)
 npx tsc -b            # type check
 npm run build         # production build
 ```
@@ -271,17 +287,58 @@ E–J rule, authentication (valid/invalid/disabled/locked accounts, tampered and
 JWTs, role restrictions), the dual-approval campaign workflow, and the scan-versus-redemption
 distinction including duplicate prevention and cross-tenant denial.
 
+### Frontend data flow
+
+Every screen reads from the API through three layers, and none of them falls back to mock data:
+
+* `services/api.ts` — the fetch wrapper. Holds the access token **in memory**, turns any non-2xx
+  into an `ApiError` carrying the backend's `code` and `message`, and turns a transport failure
+  into an `ApiError` with status `0` so the UI can distinguish "server said no" from "server not
+  reachable".
+* `services/backend/*` — typed endpoint modules mirroring the Java DTOs exactly, plus
+  `toFrontendStatus`, the single place the backend's `UPPER_SNAKE` statuses are translated to the
+  vocabulary the UI already used.
+* `app/useResource.ts` — `useResource` for reads and `useMutation` for writes. `useResource`
+  **clears its data when a request fails**, so a screen can never show yesterday's numbers next to
+  an error. `useMutation` blocks a second submit while one is in flight.
+
+`LoadingState`, `EmptyState` and `ErrorState` in `app/ui.tsx` are the only three states a data
+screen renders, which is what keeps mock data from creeping back in.
+
+### Screens and the endpoints behind them
+
+| Screen | Reads | Writes |
+|---|---|---|
+| `/trynearby` | `reports/platform/summary`, `admin/campaigns?status=PENDING` | — |
+| `/trynearby/campaigns` | `admin/campaigns` (filtered) | `admin/campaigns/{id}/approve`, `/reject` |
+| `/restaurant` | `reports/restaurant/summary`, `restaurants/campaigns`, `restaurant/bookings`, `restaurants/{id}/reviews` | — |
+| `/restaurant/scan` | `restaurants/scan/lookup` | `restaurants/scan/scan`, `restaurants/scan/redeem` |
+| `/restaurant/campaigns` | `restaurants/campaigns`, `reports/restaurant/campaigns` | `restaurants/campaigns/{id}/approve`, `/reject` |
+| `/restaurant/bookings` | `restaurant/bookings` | `restaurant/bookings/{id}/status` |
+| `/restaurant/creators` | `restaurant/assignments` | `restaurant/assignments/{id}` (DELETE) |
+| `/restaurant/subscription` | `restaurant/subscription`, `plans` | — (admin-only changes) |
+| `/creator` | `reports/creator/summary`, `reports/creator/campaigns`, `creator/campaigns` | — |
+| `/creator/campaigns` | `creator/campaigns`, `reports/creator/campaigns` | `creator/campaigns/{id}/submit` |
+| `/creator/new` | `creator/assignments` | `creator/campaigns`, `creator/campaigns/{id}/submit` |
+| `/creator/bookings` | `creator/bookings` | `creator/bookings`, `creator/bookings/{id}/status` |
+| `/creator/reviews` | `creator/reviews`, `creator/assignments` | `creator/reviews`, `creator/reviews/{id}` |
+| `/notifications` | `notifications`, `notifications/unread-count` | `notifications/{id}/read`, `notifications/read-all` |
+
 ## Known limitations
 
 Stated plainly so nothing here is mistaken for finished work:
 
-* **Portal dashboards still read the local demo store.** Every backend area below is implemented and
-  tested, but the dashboard, campaign-list and scanner screens have not been migrated from their
-  local demo data to API calls.
-* **The booking flow does not yet enforce an assignment at creation time.** A creator may request a
-  booking at any existing restaurant; review eligibility *is* gated on an active assignment.
+* **Booking creation does not require an assignment.** A creator may request a booking at any
+  existing restaurant; the wizard and the review form *are* gated on an active assignment, and the
+  backend enforces review eligibility. Adding the same check to booking creation is a backend
+  change, not a UI one.
+* **Campaign search filters the current page**, not the whole table, because the backend's list
+  endpoints paginate and expose no title-search parameter.
 * **Report rows are capped** at 200 campaigns per response and at a 366-day range, so a very large
   tenant needs paged access rather than one unbounded response.
 * Payment processing is intentionally not integrated; `subscriptions.external_ref` is reserved for
   a future provider. Plan and status changes are administrator-driven records, never a simulated
   payment.
+* **The demo store (`src/app/store.ts`) is still on disk** for the promo-code generator and its
+  unit tests, but no screen imports it. It can be deleted once those tests move to the backend's
+  own promo-code engine.
