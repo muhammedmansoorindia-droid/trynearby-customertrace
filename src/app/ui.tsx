@@ -16,17 +16,19 @@ export function Card({
   children,
   className,
   as: Tag = 'div',
+  ...rest
 }: {
   children: ReactNode;
   className?: string;
   as?: 'div' | 'section' | 'article' | 'li';
-}) {
+} & Omit<React.HTMLAttributes<HTMLElement>, 'children' | 'className'>) {
   return (
     <Tag
       className={cn(
         'rounded-xl border border-outline-variant/30 bg-surface-container-lowest shadow-elevate-low',
         className,
       )}
+      {...rest}
     >
       {children}
     </Tag>
@@ -82,7 +84,9 @@ export function StatTile({
         : 'text-on-surface';
 
   return (
-    <Card className="p-space-md">
+    // Labelled so a tile is addressable by its metric name — a screen reader user should be
+    // able to jump straight to "Verified customers" rather than reading every number in order.
+    <Card className="p-space-md" aria-label={label}>
       <p className="text-label-sm text-label-sm uppercase tracking-wide text-on-surface-variant">
         {label}
       </p>
