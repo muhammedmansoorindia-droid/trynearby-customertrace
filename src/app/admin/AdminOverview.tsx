@@ -54,8 +54,10 @@ export function AdminOverview() {
             >
               Refresh
             </Button>
+            {/* Deep-links to the pending queue, so "Review queue" lands on the work rather than on
+                the full list. */}
             <Link
-              to="/admin/campaigns"
+              to="/trynearby/campaigns?status=PENDING"
               className="font-label-md text-label-md text-primary hover:underline"
             >
               Review queue

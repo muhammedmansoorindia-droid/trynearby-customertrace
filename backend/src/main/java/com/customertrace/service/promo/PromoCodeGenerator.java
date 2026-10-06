@@ -1,7 +1,5 @@
 package com.customertrace.service.promo;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
@@ -13,32 +11,44 @@ import org.springframework.stereotype.Component;
  *
  * <pre>
  *   positions 1-2  LL   two random uppercase letters
- *   positions 3-4  NN   customer target, 10-99 (two digits)
- *   positions 5-6  DD   campaign duration in days, 01-31 (two digits)
- *   position  7    X    tier letter A-J
+ *   positions 3-4  NN   customer target, 01-99 (two digits)
+ *   positions 5-6  DD   campaign duration in days, 01-99 (two digits)
+ *   position  7    X    discount letter B-J, where B=2% … J=10%
  * </pre>
  *
- * <p>Monthly rule: A-D tiers may be reused freely. E-J may be issued at most once per
- * restaurant per calendar month, tracked by the caller through a uniqueness probe (backed by the
- * {@code promo_tier_ledger} unique key) so two concurrent requests cannot claim the same tier.
+ * <p>Monthly rule: B-F (2%-6%) may be reused freely. G-J (7%-10%) may back at most one campaign
+ * per restaurant per calendar month, enforced by {@link CampaignWorkflowService} through the
+ * {@code promo_tier_ledger} unique key so two concurrent submissions cannot both claim a letter.
  *
- * <p>Pure and stateless apart from the injected probes, so every rule is directly unit-testable.
+ * <p>Pure and stateless apart from the injected code probe, so every rule is directly
+ * unit-testable.
  */
 @Component
 public class PromoCodeGenerator {
 
-    /** Two letters, 10-99, 01-31, tier A-J. */
-    public static final String PROMO_CODE_PATTERN = "^[A-Z]{2}[1-9][0-9](0[1-9]|[12][0-9]|3[01])[A-J]$";
+    /**
+     * Two letters A-Z, 01-99, 01-99, discount letter B-J.
+     *
+     * <p>The target and duration groups each allow a leading zero. The generator's own bounds
+     * reject zero, but a code read back from the database is parsed with this pattern, which only
+     * has to recognise the shape; range checks happen in {@link #parse}.
+     */
+    public static final String PROMO_CODE_PATTERN = "^[A-Z]{2}[0-9]{2}[0-9]{2}[B-J]$";
 
-    public static final int MIN_TARGET = 10;
+    public static final int MIN_TARGET = 1;
     public static final int MAX_TARGET = 99;
     public static final int MIN_DURATION = 1;
-    public static final int MAX_DURATION = 31;
+    public static final int MAX_DURATION = 99;
 
-    /** Tiers that may be reused an unlimited number of times. */
-    public static final char[] REUSABLE_TIERS = {'A', 'B', 'C', 'D'};
-    /** Tiers limited to one use per restaurant per calendar month. */
-    public static final char[] EXCLUSIVE_TIERS = {'E', 'F', 'G', 'H', 'I', 'J'};
+    /**
+     * B-F (2%-6%): reusable any number of times per restaurant per month.
+     *
+     * <p>Held as a range rather than an array so {@link DiscountTiers} stays the single source of
+     * truth for which letters mean what.
+     */
+    private static final char REUSABLE_LAST = 'F';
+    /** G-J (7%-10%): at most one campaign per restaurant per calendar month. */
+    private static final char RESTRICTED_FIRST = 'G';
 
     private static final int MAX_ATTEMPTS = 50;
 
@@ -51,21 +61,9 @@ public class PromoCodeGenerator {
      */
     private java.util.function.Function<String, Boolean> codeExistsPredicate;
 
-    /**
-     * Probes, given a tier letter, whether that E-J tier is already spent for this restaurant and
-     * calendar month.
-     */
-    private java.util.function.Function<Character, Boolean> tierTakenPredicate;
-
     public PromoCodeGenerator withCodeExistsChecker(
             java.util.function.Function<String, Boolean> checker) {
         this.codeExistsPredicate = checker;
-        return this;
-    }
-
-    public PromoCodeGenerator withExclusiveTierTakenChecker(
-            java.util.function.Function<Character, Boolean> checker) {
-        this.tierTakenPredicate = checker;
         return this;
     }
 
@@ -74,10 +72,6 @@ public class PromoCodeGenerator {
         return codeExistsPredicate != null && Boolean.TRUE.equals(codeExistsPredicate.apply(code));
     }
 
-    /** True when the exclusive tier is already spent for this restaurant and month. */
-    private boolean tierTaken(char tier) {
-        return tierTakenPredicate != null && Boolean.TRUE.equals(tierTakenPredicate.apply(tier));
-    }
 
     /**
      * Validates that the requested values can actually be represented in two digits.
@@ -85,6 +79,9 @@ public class PromoCodeGenerator {
      * <p>Called before generation so an unrepresentable request is rejected with a clear
      * message instead of being silently truncated (150 customers cannot fit in two digits and
      * would otherwise become "15").
+     *
+     * <p>Zero is rejected for both fields: a campaign that targets nobody, or that lasts no days,
+     * is not a campaign. The upper bound is 99 because that is all two digits can carry.
      *
      * @throws PromoCodeValidationException when the target or duration cannot be encoded
      */
@@ -102,29 +99,35 @@ public class PromoCodeGenerator {
                             + durationDays + ".");
         }
     }
-/**
-     * Generates a unique promo code.
+
+    /**
+     * Generates a unique promo code for a given discount.
      *
-     * @param customerTarget customer cap, 10-99
-     * @param durationDays   campaign duration, 1-31
+     * <p>The discount letter is <em>derived</em> from {@code discountPercent}, never chosen at
+     * random: a 5% campaign must end in E, or the code would advertise one discount and settle
+     * another. Only the two leading letters are random, and they are re-drawn until the whole code
+     * is unused.
+     *
+     * @param customerTarget  customer cap, 1-99, encoded as NN
+     * @param durationDays    campaign duration, 1-99 days, encoded as DD
+     * @param discountPercent 2-10, encoded as the discount letter B-J
      * @return a code matching {@code LLNNDDX}
-     * @throws PromoCodeValidationException when the inputs are not encodable, or no unique code
+     * @throws PromoCodeValidationException when the values are not encodable, or no unique code
      *                                      could be found within the attempt budget
      */
-    public String generate(int customerTarget, int durationDays) {
+    public String generate(int customerTarget, int durationDays, int discountPercent) {
         validateEncodable(customerTarget, durationDays);
 
         String target = String.format("%02d", customerTarget);
         String duration = String.format("%02d", durationDays);
+        String tier = String.valueOf(DiscountTiers.letterFor(discountPercent));
 
+        // The NN/DD/discount segments are fixed by the request, so the letters are the only free
+        // part: only they are re-drawn on a collision, and the requested values never change.
         for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-            char tier = pickTier();
-
-            for (int inner = 0; inner < MAX_ATTEMPTS; inner++) {
-                String code = randomLetters() + target + duration + tier;
-                if (!codeTaken(code)) {
-                    return code;
-                }
+            String code = randomLetters() + target + duration + tier;
+            if (!codeTaken(code)) {
+                return code;
             }
         }
         throw new PromoCodeValidationException(
@@ -133,24 +136,30 @@ public class PromoCodeGenerator {
     }
 
     /**
-     * Chooses a tier letter.
+     * A campaign name, derived from the campaign's own settings.
      *
-     * <p>Exclusive tiers are preferred because they are scarce; once all six are spent for this
-     * restaurant and calendar month, a reusable A-D tier is used so campaigns can still be
-     * created rather than failing outright.
+     * <p>Every campaign is named by the same rule that mints its promo code, so the two can never
+     * disagree and there is nothing for a creator to mistype: two random letters, the customer
+     * target, the duration, and the discount letter. A creator never types a name.
+     *
+     * <p>The letters are the only random part. Regenerating a code therefore only re-draws them —
+     * the target, duration and discount the creator chose are carried through untouched.
      */
-    private char pickTier() {
-        // A char[] has no stream(); iterate so each tier can be probed individually.
-        List<Character> unusedExclusive = new ArrayList<>();
-        for (char tier : EXCLUSIVE_TIERS) {
-            if (!tierTaken(tier)) {
-                unusedExclusive.add(tier);
-            }
+    public String preview(int customerTarget, int durationDays, int discountPercent,
+                          java.util.function.IntUnaryOperator letterSource) {
+        validateEncodable(customerTarget, durationDays);
+        return lettersFrom(letterSource) + String.format("%02d", customerTarget)
+                + String.format("%02d", durationDays)
+                + DiscountTiers.letterFor(discountPercent);
+    }
+
+    private String lettersFrom(java.util.function.IntUnaryOperator letterSource) {
+        if (letterSource == null) {
+            return randomLetters();
         }
-        if (!unusedExclusive.isEmpty()) {
-            return unusedExclusive.get(ThreadLocalRandom.current().nextInt(unusedExclusive.size()));
-        }
-        return REUSABLE_TIERS[ThreadLocalRandom.current().nextInt(REUSABLE_TIERS.length)];
+        // Two draws, both mapped into A-Z, so a caller can supply its own preview letters.
+        return "" + (char) ('A' + Math.floorMod(letterSource.applyAsInt(0), 26))
+                + (char) ('A' + Math.floorMod(letterSource.applyAsInt(1), 26));
     }
 
     private String randomLetters() {
@@ -159,6 +168,21 @@ public class PromoCodeGenerator {
             sb.append((char) ('A' + ThreadLocalRandom.current().nextInt(26)));
         }
         return sb.toString();
+    }
+
+    /**
+     * Whether the discount letter for a campaign may be issued again.
+     *
+     * <p>Advisory only: the authoritative check is the insert into {@code promo_tier_ledger},
+     * whose unique key makes two concurrent campaigns fail rather than both succeeding.
+     */
+    public boolean isRestrictedDiscount(char letter) {
+        return DiscountTiers.isRestricted(letter);
+    }
+
+    /** True when the letter's discount may be reused freely (B-F, 2%-6%). */
+    public boolean isReusableDiscount(char letter) {
+        return DiscountTiers.isReusable(letter);
     }
 
     /**
@@ -192,10 +216,5 @@ public class PromoCodeGenerator {
     /** True when the string matches the {@code LLNNDDX} shape exactly. */
     public boolean isValidFormat(String raw) {
         return raw != null && raw.trim().toUpperCase(Locale.ROOT).matches(PROMO_CODE_PATTERN);
-    }
-
-    /** True when the tier letter is in the exclusive E-J range. */
-    public boolean isExclusiveTier(char tier) {
-        return tier >= 'E' && tier <= 'J';
     }
 }

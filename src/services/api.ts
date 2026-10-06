@@ -94,6 +94,38 @@ export interface LoginResponse {
   creatorId?: number | null;
 }
 
+/** The custom header the backend requires on cookie-authenticated calls. */
+const CSRF_HEADER = 'X-CT-CSRF';
+
+/**
+ * The name Spring Security's {@code CookieCsrfTokenRepository} gives the readable CSRF cookie,
+ * and the header it compares it against on every non-safe request.
+ *
+ * <p>The refresh/logout routes are non-safe (POST), so they need this *in addition to*
+ * {@link CSRF_HEADER}: without it the refresh call 403s and a page reload signs the user out.
+ */
+const XSRF_COOKIE = 'XSRF-TOKEN';
+const XSRF_HEADER = 'X-XSRF-TOKEN';
+
+/**
+ * Reads a cookie the server is allowed to expose to scripts.
+ *
+ * <p>`XSRF-TOKEN` is intentionally readable (not HttpOnly) because the *client* has to echo it
+ * in a header — that is the double-submit pattern. The refresh token itself stays HttpOnly and
+ * is never touched here.
+ */
+function readCookie(name: string): string | null {
+  const cookies = typeof document === 'undefined' ? '' : (document.cookie ?? '');
+  for (const part of cookies.split(';')) {
+    const trimmed = part.trim();
+    if (trimmed === name) return '';
+    if (trimmed.startsWith(`${name}=`)) {
+      return decodeURIComponent(trimmed.slice(name.length + 1));
+    }
+  }
+  return null;
+}
+
 /**
  * Performs one API request.
  *
@@ -106,8 +138,15 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  // Required by the backend for the cookie-authenticated refresh/logout routes.
-  if (withCookie) headers[CSRF_HEADER] = '1';
+  if (withCookie) {
+    // Required by the backend for the cookie-authenticated refresh/logout routes.
+    headers[CSRF_HEADER] = '1';
+    // Spring Security's CookieCsrfTokenRepository also requires the token echoed as a header.
+    // Absent on the very first request ever (no cookie has been set yet); that request is a
+    // login/refresh attempt that the server answers with a fresh token anyway.
+    const xsrf = readCookie(XSRF_COOKIE);
+    if (xsrf !== null) headers[XSRF_HEADER] = xsrf;
+  }
 
   let response: Response;
   try {
@@ -213,8 +252,6 @@ export async function logout(): Promise<void> {
 export async function fetchCurrentUser(): Promise<AuthUser> {
   return request<AuthUser>('/api/auth/me');
 }
-/** The custom header the backend requires on cookie-authenticated calls. */
-const CSRF_HEADER = 'X-CT-CSRF';
 
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';

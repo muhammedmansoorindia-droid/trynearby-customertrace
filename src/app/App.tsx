@@ -16,6 +16,9 @@ import { SignIn } from '@/app/SignIn';
 import { PortalLayout } from '@/app/PortalLayout';
 import { AdminOverview } from '@/app/admin/AdminOverview';
 import { AdminCampaigns } from '@/app/admin/AdminCampaigns';
+import { AdminAssignments } from '@/app/admin/AdminAssignments';
+import { AdminDirectory } from '@/app/admin/AdminDirectory';
+import { AdminSubscriptions } from '@/app/admin/AdminSubscriptions';
 import { RestaurantDashboard } from '@/app/restaurant/RestaurantDashboard';
 import { RestaurantCampaigns } from '@/app/restaurant/RestaurantCampaigns';
 import { RestaurantScanner } from '@/app/restaurant/RestaurantScanner';
@@ -85,6 +88,9 @@ function Shell() {
       <Route element={<PortalLayout />}>
         <Route path="/trynearby" element={<AdminOverview />} />
         <Route path="/trynearby/campaigns" element={<AdminCampaigns />} />
+        <Route path="/trynearby/assignments" element={<AdminAssignments />} />
+        <Route path="/trynearby/directory" element={<AdminDirectory />} />
+        <Route path="/trynearby/subscriptions" element={<AdminSubscriptions />} />
         <Route path="/restaurant" element={<RestaurantDashboard />} />
         <Route path="/restaurant/campaigns" element={<RestaurantCampaigns />} />
         <Route path="/restaurant/scan" element={<RestaurantScanner />} />

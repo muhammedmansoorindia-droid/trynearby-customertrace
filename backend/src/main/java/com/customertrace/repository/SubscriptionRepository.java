@@ -16,5 +16,8 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Long
     Optional<Subscription> findFirstByRestaurantIdAndStatusInOrderByCreatedAtDesc(
             Long restaurantId, List<String> statuses);
 
+    /** Every subscription on the platform, most recently touched first, for administrators. */
+    List<Subscription> findAllByOrderByUpdatedAtDesc();
+
     long countByStatus(String status);
 }

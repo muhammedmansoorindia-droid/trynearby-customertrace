@@ -1,13 +1,19 @@
 /**
- * Admin campaign queue.
+ * Admin campaign queue: review, search and decide.
  *
  * <p>Decisions are sent to the backend and the list is refetched only after the backend confirms,
  * so the screen can never show an approval the server refused. Which actions are offered comes from
  * the backend's own `canApprove` flag rather than a client-side guess.
+ *
+ * <p>Search, status filtering and ordering all run in the database, so the queue is correct however
+ * many campaigns there are. The tabs' counts come from the unfiltered list, so a badge never reads
+ * "0" merely because a filter is currently on.
  */
-
 import { useCallback, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
+import { CampaignDecisionDialog } from '@/app/CampaignDecisionDialog';
+import { CampaignDetailDialog } from '@/app/CampaignDetailDialog';
 import { useMutation, useResource } from '@/app/useResource';
 import {
   Badge,
@@ -21,11 +27,27 @@ import {
   SectionHeading,
   inputClass,
 } from '@/app/ui';
-import { campaignsApi, toFrontendStatus } from '@/services/backend/campaigns';
+import {
+  campaignsApi,
+  toFrontendStatus,
+  type Campaign,
+  type CampaignSort,
+} from '@/services/backend/campaigns';
+import {
+  approvalSummary,
+  decisionOf,
+  SORT_OPTIONS,
+} from '@/services/campaignApproval';
 import { STATUS_LABELS, STATUS_TONES } from '@/services/campaignWorkflow';
 import { cn } from '@/utils';
 import { formatDateRange, formatRelative } from '@/utils/format';
 
+/**
+ * Status tabs, mapped one-to-one onto backend statuses.
+ *
+ * <p>Only states the backend actually has are listed. `CANCELLED` and `COMPLETED` are reachable but
+ * are terminal, so they appear under "All" rather than earning a tab of their own.
+ */
 const FILTERS = [
   { id: 'PENDING', label: 'Awaiting review' },
   { id: 'ACTIVE', label: 'Live' },
@@ -34,17 +56,49 @@ const FILTERS = [
   { id: '', label: 'All' },
 ] as const;
 
+/**
+ * Empty-state copy.
+ *
+ * <p>Distinguishes "nothing is waiting for you" from "your search matched nothing", because those
+ * need different reactions: the first is good news, the second is a typo to fix.
+ */
+function emptyTitle(filter: string, search: string): string {
+  if (search.trim()) return 'No campaigns match that search';
+  if (filter === 'PENDING') return 'No campaigns awaiting review';
+  if (filter === '') return 'No campaigns on record';
+  return 'No campaigns in this view';
+}
+
+function emptyHint(filter: string, search: string): string {
+  if (search.trim()) return `Nothing matches “${search.trim()}”. Try a different term or clear the search.`;
+  if (filter === 'PENDING') return 'The review queue is clear. Nothing needs a decision right now.';
+  return 'Try a different filter above.';
+}
+
 export function AdminCampaigns() {
-  const [filter, setFilter] = useState<string>('PENDING');
-  const [rejecting, setRejecting] = useState<number | null>(null);
-  const [reason, setReason] = useState('');
+  // The review-queue link lands on ?status=PENDING, so the queue opens where the user is going.
+  const [params, setParams] = useSearchParams();
+  const filter = params.get('status') ?? 'PENDING';
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<CampaignSort>('newest');
+  const [detail, setDetail] = useState<Campaign | null>(null);
+  const [decision, setDecision] = useState<{
+    campaign: Campaign;
+    kind: 'approve' | 'reject';
+  } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const list = useResource(
     useCallback(
-      () => campaignsApi.listForAdmin(filter ? { status: filter } : undefined),
-      [filter],
+      () =>
+        campaignsApi.listForAdmin({
+          ...(filter ? { status: filter } : {}),
+          search,
+          sort,
+        }),
+      [filter, search, sort],
     ),
-    [filter],
+    [filter, search, sort],
   );
 
   // Counts come from the unfiltered list, so tab badges never read as "0" while a filter is on.
@@ -59,9 +113,26 @@ export function AdminCampaigns() {
   const refresh = () => {
     list.reload();
     counts.reload();
+    // The open detail may have just been decided, so do not leave a stale one on screen.
+    setDetail(null);
   };
 
   const campaigns = list.data?.content ?? [];
+
+  /** Applies a decision and reports it only after the backend has confirmed. */
+  const confirmDecision = async (reason: string) => {
+    if (!decision) return;
+    const { campaign, kind } = decision;
+    const result = await decide.run(campaign.id, kind, reason || undefined);
+    if (!result) return; // The dialog stays open, showing the server's message.
+    setNotice(
+      kind === 'approve'
+        ? `${campaign.title} approved. It now waits on the restaurant.`
+        : `${campaign.title} rejected. The creator has been told why.`,
+    );
+    setDecision(null);
+    refresh();
+  };
 
   return (
     <div className="space-y-gutter">
@@ -75,6 +146,41 @@ export function AdminCampaigns() {
         }
       />
 
+      {/* Search and ordering, applied by the database rather than to the page in hand. */}
+      <div className="flex flex-wrap items-end gap-space-md">
+        <div className="min-w-56 flex-1">
+          <Field
+            label="Search"
+            hint="Matches the campaign code, the creator or the restaurant."
+          >
+            <input
+              className={inputClass}
+              type="search"
+              value={search}
+              placeholder="e.g. Copper, or a campaign code"
+              aria-label="Search campaigns"
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </Field>
+        </div>
+        <div className="w-48">
+          <Field label="Order by">
+            <select
+              className={inputClass}
+              value={sort}
+              aria-label="Sort campaigns"
+              onChange={(event) => setSort(event.target.value as CampaignSort)}
+            >
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      </div>
+
       <div role="tablist" aria-label="Filter campaigns" className="ct-scroll-x flex gap-space-xs">
         {FILTERS.map((option) => {
           const selected = filter === option.id;
@@ -87,7 +193,12 @@ export function AdminCampaigns() {
               role="tab"
               aria-selected={selected}
               type="button"
-              onClick={() => setFilter(option.id)}
+              onClick={() => {
+                const next = new URLSearchParams(params);
+                if (option.id) next.set('status', option.id);
+                else next.delete('status');
+                setParams(next, { replace: true });
+              }}
               className={cn(
                 'whitespace-nowrap rounded-full border px-space-md py-space-sm font-label-sm text-label-sm transition-colors',
                 selected
@@ -101,9 +212,8 @@ export function AdminCampaigns() {
         })}
       </div>
 
-      {decide.error ? (
-        <Callout tone="error">{decide.error.message}</Callout>
-      ) : null}                  {decide.error ? <Callout tone="error">{decide.error.message}</Callout> : null}
+      {notice ? <Callout tone="success">{notice}</Callout> : null}
+      {decide.error ? <Callout tone="error">{decide.error.message}</Callout> : null}
 
       {list.error ? (
         <ErrorState
@@ -114,7 +224,10 @@ export function AdminCampaigns() {
       ) : list.loading ? (
         <LoadingState label="Loading campaigns…" />
       ) : campaigns.length === 0 ? (
-        <EmptyState title="No campaigns in this view" hint="Try a different filter above." />
+        <EmptyState
+          title={emptyTitle(filter, search)}
+          hint={emptyHint(filter, search)}
+        />
       ) : (
         <ul className="space-y-space-md">
           {campaigns.map((campaign) => {
@@ -137,11 +250,29 @@ export function AdminCampaigns() {
                       {campaign.offerText} ·{' '}
                       {formatDateRange(campaign.startDate, campaign.endDate)}
                     </p>
+                    {/* Which of the two approvals is still outstanding, in plain words. */}
+                    <p className="text-body-sm text-body-sm text-on-surface-variant">
+                      {approvalSummary(campaign)}
+                    </p>
 
+                    {/* Both decisions shown explicitly, not just a summary line, so an approver can
+                        see at a glance which of the two is still outstanding. */}
                     <dl className="mt-space-sm flex flex-wrap gap-x-gutter gap-y-space-xs text-body-sm text-body-sm">
+                      <div className="flex gap-1">
+                        <dt className="text-on-surface-variant">TryNearby</dt>
+                        <dd className="text-on-surface">{decisionOf(campaign, 'admin')}</dd>
+                      </div>
+                      <div className="flex gap-1">
+                        <dt className="text-on-surface-variant">Restaurant</dt>
+                        <dd className="text-on-surface">{decisionOf(campaign, 'restaurant')}</dd>
+                      </div>
                       <div className="flex gap-1">
                         <dt className="text-on-surface-variant">Code</dt>
                         <dd className="font-mono text-on-surface">{campaign.promoCode ?? '—'}</dd>
+                      </div>
+                      <div className="flex gap-1">
+                        <dt className="text-on-surface-variant">Discount</dt>
+                        <dd className="text-on-surface">{campaign.discountPercent}%</dd>
                       </div>
                       <div className="flex gap-1">
                         <dt className="text-on-surface-variant">Target</dt>
@@ -170,67 +301,65 @@ export function AdminCampaigns() {
                   {campaign.canApprove ? (
                     <div className="flex shrink-0 flex-wrap gap-space-sm">
                       <Button
-                        onClick={async () => {
-                          const result = await decide.run(campaign.id, 'approve');
-                          if (result) refresh();
-                        }}
+                        onClick={() => setDecision({ campaign, kind: 'approve' })}
                         disabled={decide.pending}
                         title="Approve this campaign"
                       >
-                        {decide.pending ? 'Approving…' : 'Approve'}
+                        Approve
                       </Button>
                       <Button
                         variant="secondary"
-                        onClick={() => {
-                          setRejecting(rejecting === campaign.id ? null : campaign.id);
-                          setReason('');
-                        }}
+                        onClick={() => setDecision({ campaign, kind: 'reject' })}
+                        disabled={decide.pending}
                       >
                         Reject
                       </Button>
                     </div>
                   ) : null}
+
+                  {/* Reading is always allowed. When a decision is still this reviewer's to make,
+                      the label says so, so the modal is not mistaken for a read-only summary. */}
+                  <Button
+                    variant="ghost"
+                    className="mt-2"
+                    onClick={() => setDetail(campaign)}
+                  >
+                    {campaign.canApprove ? 'View & approve' : 'View details'}
+                  </Button>
                 </div>
 
-                {rejecting === campaign.id ? (
-                  <form
-                    className="mt-space-md space-y-space-sm border-t border-outline-variant/30 pt-space-md"
-                    onSubmit={async (event) => {
-                      event.preventDefault();
-                      const result = await decide.run(campaign.id, 'reject', reason.trim());
-                      if (result) {
-                        setRejecting(null);
-                        setReason('');
-                        refresh();
-                      }
-                    }}
-                  >
-                    <Field
-                      label="Reason for rejection"
-                      hint="The creator sees this verbatim, so be specific."
-                    >
-                      <textarea
-                        className={cn(inputClass, 'min-h-20 resize-y')}
-                        value={reason}
-                        onChange={(event) => setReason(event.target.value)}
-                        placeholder="e.g. The offer cannot be verified at settlement."
-                      />
-                    </Field>
-                    <div className="flex gap-space-sm">
-                      <Button type="submit" variant="danger" disabled={decide.pending}>
-                        Confirm rejection
-                      </Button>
-                      <Button variant="ghost" onClick={() => setRejecting(null)}>
-                        Cancel
-                      </Button>
-                    </div>
-                  </form>
-                ) : null}
               </Card>
             );
           })}
         </ul>
       )}
+
+      {decision ? (
+        <CampaignDecisionDialog
+          campaign={decision.campaign}
+          decision={decision.kind}
+          pending={decide.pending}
+          error={decide.error?.message ?? null}
+          onConfirm={confirmDecision}
+          onCancel={() => setDecision(null)}
+        />
+      ) : null}
+
+      {detail ? (
+        <CampaignDetailDialog
+          campaign={detail}
+          loadHistory={campaignsApi.historyForAdmin}
+          // Re-read on open so the controls reflect the server's current state, not the list
+          // snapshot this row was rendered from.
+          loadCampaign={campaignsApi.detailForAdmin}
+          party="admin"
+          pending={decide.pending}
+          // Deciding from the modal opens the same confirmation the row buttons use, so there is
+          // one path to a decision rather than two that could drift apart.
+          onDecide={(kind) => setDecision({ campaign: detail, kind })}
+          onClose={() => setDetail(null)}
+        />
+      ) : null}
     </div>
   );
 }

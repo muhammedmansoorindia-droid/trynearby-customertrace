@@ -19,11 +19,16 @@ const NAV: Record<Exclude<Portal, null>, Array<{ to: string; label: string; icon
   trynearby: [
     { to: '/trynearby', label: 'Overview', icon: 'dashboard' },
     { to: '/trynearby/campaigns', label: 'Campaigns', icon: 'approval' },
+    // Without this, a creator cannot be given a venue to run campaigns for and the New Campaign
+    // wizard has nothing to list.
+    { to: '/trynearby/assignments', label: 'Creator assignments', icon: 'group' },
+    { to: '/trynearby/directory', label: 'Directory', icon: 'storefront' },
+    { to: '/trynearby/subscriptions', label: 'Subscriptions', icon: 'workspace_premium' },
   ],
   restaurant: [
     { to: '/restaurant', label: 'Dashboard', icon: 'dashboard' },
     { to: '/restaurant/scan', label: 'Scan & redeem', icon: 'qr_code_scanner' },
-    { to: '/restaurant/campaigns', label: 'Campaigns', icon: 'campaign' },
+    { to: '/restaurant/campaigns', label: 'Campaign requests', icon: 'campaign' },
     { to: '/restaurant/bookings', label: 'Bookings', icon: 'event' },
     { to: '/restaurant/creators', label: 'Creators', icon: 'group' },
     { to: '/restaurant/subscription', label: 'Subscription', icon: 'workspace_premium' },

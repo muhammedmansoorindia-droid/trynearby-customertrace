@@ -10,12 +10,16 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 /**
- * Ledger of tier letters consumed per restaurant per calendar month.
+ * Ledger of restricted discount letters issued per restaurant per calendar month.
  *
- * <p>The unique key on {@code (restaurant_id, calendar_month, tier_letter)} is what makes the
- * E-J monthly restriction safe under concurrency: two simultaneous campaigns that pick the same
- * scarce tier cannot both insert, so the second fails on the key rather than silently granting a
- * duplicate.
+ * <p>Holds the G-J (7%-10%) discounts a restaurant has already committed to in a given month.
+ * The unique key on {@code (restaurant_id, calendar_month, tier_letter)} is what makes the
+ * restriction safe under concurrency: two simultaneous campaign submissions that pick the same
+ * scarce discount cannot both insert, so the second fails on the key rather than silently
+ * granting a duplicate.
+ *
+ * <p>Because the key omits {@code creator_id}, the cap is a property of the venue: several
+ * creators assigned to one restaurant share a single allowance for each high discount.
  */
 @Entity
 @Table(name = "promo_tier_ledger")

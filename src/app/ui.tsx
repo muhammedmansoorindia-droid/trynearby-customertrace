@@ -278,17 +278,27 @@ export function Button({
 export function Field({
   label,
   hint,
+  error,
   children,
 }: {
   label: string;
   hint?: string;
+  /**
+   * Validation message. Rendered in the error tone and announced, so a form that refuses to submit
+   * always says why rather than simply appearing inert.
+   */
+  error?: string;
   children: ReactNode;
 }) {
   return (
     <label className="block">
       <span className="block font-label-md text-label-md text-on-surface mb-1">{label}</span>
       {children}
-      {hint ? (
+      {error ? (
+        <span role="alert" className="block text-body-sm text-body-sm text-error mt-1">
+          {error}
+        </span>
+      ) : hint ? (
         <span className="block text-body-sm text-body-sm text-on-surface-variant mt-1">
           {hint}
         </span>

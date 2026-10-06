@@ -9,7 +9,6 @@ import org.springframework.transaction.annotation.Transactional;
 import com.customertrace.domain.Campaign;
 import com.customertrace.domain.CampaignStatus;
 import com.customertrace.domain.PromoCode;
-import com.customertrace.domain.PromoTierLedger;
 import com.customertrace.domain.Redemption;
 import com.customertrace.domain.Restaurant;
 import com.customertrace.domain.ScanEvent;
@@ -20,7 +19,6 @@ import com.customertrace.exception.ApiErrors;
 import com.customertrace.exception.ApiException;
 import com.customertrace.repository.CampaignRepository;
 import com.customertrace.repository.PromoCodeRepository;
-import com.customertrace.repository.PromoTierLedgerRepository;
 import com.customertrace.repository.RedemptionRepository;
 import com.customertrace.repository.RestaurantRepository;
 import com.customertrace.repository.ScanEventRepository;
@@ -47,7 +45,6 @@ public class RedemptionService {
     private final RestaurantRepository restaurantRepository;
     private final ScanEventRepository scanRepository;
     private final RedemptionRepository redemptionRepository;
-    private final PromoTierLedgerRepository tierLedgerRepository;
     private final PromoCodeGenerator generator;
 
     public RedemptionService(PromoCodeRepository promoCodeRepository,
@@ -55,14 +52,12 @@ public class RedemptionService {
                              RestaurantRepository restaurantRepository,
                              ScanEventRepository scanRepository,
                              RedemptionRepository redemptionRepository,
-                             PromoTierLedgerRepository tierLedgerRepository,
                              PromoCodeGenerator generator) {
         this.promoCodeRepository = promoCodeRepository;
         this.campaignRepository = campaignRepository;
         this.restaurantRepository = restaurantRepository;
         this.scanRepository = scanRepository;
         this.redemptionRepository = redemptionRepository;
-        this.tierLedgerRepository = tierLedgerRepository;
         this.generator = generator;
     }
 
@@ -189,7 +184,12 @@ public class RedemptionService {
         Campaign campaign = requireCampaign(promo);
         requireOwnership(campaign, restaurant);
         requireRedeemable(campaign, visitDate);
-        requireExclusiveTierAvailable(promo, restaurant, visitDate);
+
+        // The monthly discount cap is enforced when the campaign is submitted, not here: a G-J
+        // discount may back only one campaign per restaurant per month, and that allowance is
+        // already spent by the time anyone can redeem. Checking it again at the till would block
+        // every redemption of a legitimately issued high-discount campaign — including the
+        // campaign's own target of up to 99 customers.
 
         // Idempotency for a walk-in that never scanned; the unique key is the backstop.
         if (req.customerRef() != null && !req.customerRef().isBlank()
@@ -214,12 +214,6 @@ public class RedemptionService {
         redemption.setStaffName(actor.userIdName());
         redemption.setRedeemedBy(actor.userId());
         Redemption saved = redemptionRepository.save(redemption);
-
-        // Claim the E-J tier for this restaurant/month exactly once; the unique key makes a
-        // concurrent second claim fail rather than silently succeed.
-        if (promo.isExclusiveTier()) {
-            claimExclusiveTier(promo, restaurant, visitDate);
-        }
 
         return new RedemptionDtos.RedemptionResponse(
                 saved.getId(), code, campaign.getId(), campaign.getTitle(),
@@ -268,34 +262,5 @@ public class RedemptionService {
                     "This campaign has reached its " + campaign.getTargetCustomers()
                             + "-customer limit.");
         }
-    }
-
-    /** E-J may be redeemed once per restaurant per calendar month; A-D are unrestricted. */
-    private void requireExclusiveTierAvailable(PromoCode promo, Restaurant restaurant,
-                                               LocalDate visitDate) {
-        if (!promo.isExclusiveTier()) {
-            return;
-        }
-        String month = monthKey(visitDate);
-        if (tierLedgerRepository.existsByRestaurantIdAndCalendarMonthAndTierLetter(
-                restaurant.getId(), month, promo.getTierLetter())) {
-            throw ApiErrors.badRequest("TIER_MONTHLY_LIMIT",
-                    "This exclusive code (" + promo.getTierLetter() + ") has already been used in "
-                            + month + ".");
-        }
-    }
-
-    private void claimExclusiveTier(PromoCode promo, Restaurant restaurant, LocalDate visitDate) {
-        PromoTierLedger entry = new PromoTierLedger();
-        entry.setRestaurantId(restaurant.getId());
-        entry.setCalendarMonth(monthKey(visitDate));
-        entry.setTierLetter(promo.getTierLetter());
-        entry.setPromoCodeId(promo.getId());
-        tierLedgerRepository.save(entry);
-    }
-
-    /** {@code YYYY-MM} from a DATE column, so the month is timezone-free. */
-    static String monthKey(LocalDate date) {
-        return String.format(Locale.ROOT, "%04d-%02d", date.getYear(), date.getMonthValue());
     }
 }

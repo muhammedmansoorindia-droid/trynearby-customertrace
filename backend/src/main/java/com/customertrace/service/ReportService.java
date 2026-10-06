@@ -127,7 +127,7 @@ public class ReportService {
             CurrentUser actor, LocalDate from, LocalDate to) {
         Restaurant restaurant = requireRestaurant(actor);
         Range range = Range.of(from, to);
-        List<Campaign> campaigns = campaignRepository.search(null, null, restaurant.getId(),
+        List<Campaign> campaigns = campaignRepository.search(null, null, restaurant.getId(), null,
                 PageRequest.of(0, MAX_CAMPAIGN_ROWS)).getContent();
         return campaignPerformance(campaigns, range);
     }
@@ -161,7 +161,7 @@ public class ReportService {
             CurrentUser actor, LocalDate from, LocalDate to) {
         Creator creator = requireCreator(actor);
         Range range = Range.of(from, to);
-        List<Campaign> campaigns = campaignRepository.search(null, creator.getId(), null,
+        List<Campaign> campaigns = campaignRepository.search(null, creator.getId(), null, null,
                 PageRequest.of(0, MAX_CAMPAIGN_ROWS)).getContent();
         return campaignPerformance(campaigns, range);
     }
@@ -177,7 +177,7 @@ public class ReportService {
         List<ReportDtos.StatusBreakupEntry> entries = new ArrayList<>();
         for (CampaignStatus status : CampaignStatus.values()) {
             entries.add(new ReportDtos.StatusBreakupEntry(status.name(),
-                    campaignRepository.search(status, creator.getId(), null,
+                    campaignRepository.search(status, creator.getId(), null, null,
                             PageRequest.of(0, 1)).getTotalElements()));
         }
         return new ReportDtos.StatusBreakupResponse(entries);
@@ -274,7 +274,7 @@ public class ReportService {
     public List<ReportDtos.CampaignPerformanceResponse> platformCampaigns(LocalDate from,
                                                                          LocalDate to) {
         Range range = Range.of(from, to);
-        List<Campaign> campaigns = campaignRepository.search(null, null, null,
+        List<Campaign> campaigns = campaignRepository.search(null, null, null, null,
                 PageRequest.of(0, MAX_CAMPAIGN_ROWS)).getContent();
         return campaignPerformance(campaigns, range);
     }

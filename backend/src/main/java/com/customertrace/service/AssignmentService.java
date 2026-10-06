@@ -1,7 +1,10 @@
 package com.customertrace.service;
 
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,22 +53,22 @@ public class AssignmentService {
     @Transactional(readOnly = true)
     public List<AssignmentDtos.AssignmentResponse> forRestaurant(CurrentUser actor) {
         Restaurant restaurant = ownRestaurant(actor);
-        return assignments.findByRestaurantIdOrderByCreatedAtDesc(restaurant.getId())
-                .stream().map(this::toResponse).toList();
+        return respond(assignments.findByRestaurantIdOrderByCreatedAtDesc(restaurant.getId()));
     }
 
     /** Restaurants the signed-in creator is assigned to. */
     @Transactional(readOnly = true)
     public List<AssignmentDtos.AssignmentResponse> forCreator(CurrentUser actor) {
         Creator creator = ownCreator(actor);
-        return assignments.findByCreatorIdOrderByCreatedAtDesc(creator.getId())
-                .stream().map(this::toResponse).toList();
+        // Names are resolved here too, so the creator's wizard can name each venue rather than
+        // showing a bare numeric id.
+        return respond(assignments.findByCreatorIdOrderByCreatedAtDesc(creator.getId()));
     }
 
     /** Every assignment on the platform, for administrators. */
     @Transactional(readOnly = true)
     public List<AssignmentDtos.AssignmentResponse> all() {
-        return assignments.findAll().stream().map(this::toResponse).toList();
+        return respond(assignments.findAll());
     }
 
     /**
@@ -245,9 +248,35 @@ public class AssignmentService {
         notifications.save(n);
     }
 
+    /**
+     * Maps rows with their display names resolved in one pass each.
+     *
+     * <p>The names are looked up in bulk rather than per row so a long assignment history does not
+     * turn the admin list into an N+1 query storm.
+     */
+    private List<AssignmentDtos.AssignmentResponse> respond(
+            List<RestaurantCreatorAssignment> rows) {
+        Map<Long, String> restaurantNames = restaurants.findAll().stream()
+                .collect(Collectors.toMap(Restaurant::getId, Restaurant::getName));
+        Map<Long, String> creatorNames = creators.findAll().stream()
+                .collect(Collectors.toMap(Creator::getId, Creator::getDisplayName));
+
+        return rows.stream()
+                .map(a -> toResponse(a,
+                        restaurantNames.get(a.getRestaurantId()),
+                        creatorNames.get(a.getCreatorId())))
+                .toList();
+    }
+
     private AssignmentDtos.AssignmentResponse toResponse(RestaurantCreatorAssignment a) {
+        return toResponse(a, null, null);
+    }
+
+    private AssignmentDtos.AssignmentResponse toResponse(RestaurantCreatorAssignment a,
+                                                          String restaurantName,
+                                                          String creatorName) {
         return new AssignmentDtos.AssignmentResponse(a.getId(), a.getRestaurantId(),
                 a.getCreatorId(), a.isActive(), a.getAssignedBy(), a.getCreatedAt(),
-                a.getUpdatedAt());
+                a.getUpdatedAt(), restaurantName, creatorName);
     }
 }

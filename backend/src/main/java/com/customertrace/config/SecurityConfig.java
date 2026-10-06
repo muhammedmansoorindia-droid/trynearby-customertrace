@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -73,12 +74,16 @@ public class SecurityConfig {
             // bearer token or the refresh cookie alone.
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .csrf(csrf -> csrf
-                .csrfTokenRepository(
-                        new org.springframework.security.web.csrf.CookieCsrfTokenRepository())
+                .csrfTokenRepository(xsrfTokenRepository())
                 // The API never reads the CSRF cookie; the custom header below is the check.
                 .csrfTokenRequestHandler(
                         new org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler())
                 .ignoringRequestMatchers(r -> !isCookieAuthenticated(r)))
+            // Login is exempt from the CSRF *check* (it has no cookie yet) but still hands the
+            // browser a readable XSRF-TOKEN, so the first refresh after login can echo it back.
+            // The X-CT-CSRF half of the check is enforced by the filter below.
+            .addFilterAfter(new CookieAuthCsrfFilter(xsrfTokenRepository()),
+                    org.springframework.security.web.csrf.CsrfFilter.class)
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeHttpRequests(auth -> auth
                 // Public: login, refresh/logout (cookie + custom header), health, API docs.
@@ -123,6 +128,91 @@ public class SecurityConfig {
     }
 
     /**
+     * The CSRF token store for the cookie-authenticated refresh/logout routes.
+     *
+     * <p>Spring Security's standard double-submit design: the token is written to a cookie the
+     * frontend <b>can</b> read, and the frontend echoes it in {@code X-XSRF-TOKEN}. This is the
+     * cookie-authentication counterpart of the {@code Authorization} header — the cookie alone
+     * is an ambient credential, so the echo is what makes the request deliberate.
+     *
+     * <p><b>Not HttpOnly on purpose.</b> A JS-unreadable cookie would make the echo impossible
+     * and permanently break refresh (every reload would sign the user out), while adding no
+     * protection the missing cookie already provides. The long-lived secret inside
+     * {@code ct_refresh} stays HttpOnly.
+     */
+    private static org.springframework.security.web.csrf.CookieCsrfTokenRepository
+            xsrfTokenRepository() {
+        // withHttpOnlyFalse() is the documented Spring Security 6 spelling of
+        // setCookieHttpOnly(false); the frontend has to read the cookie to echo it back.
+        return org.springframework.security.web.csrf.CookieCsrfTokenRepository.withHttpOnlyFalse();
+    }
+
+    /**
+     * Enforces the custom header on the cookie-authenticated routes, and issues the readable
+     * CSRF cookie on login.
+     *
+     * <p>Two separate checks run here, because either one alone is forgeable by a cross-origin
+     * attacker: the cookie is an ambient credential the browser attaches on its own, while the
+     * header proves the request came from script that could <em>read</em> that cookie. Sending the
+     * header without echoing the cookie is what a cross-origin form post looks like.
+     *
+     * <p>Login is exempt from the checks — there is no session to protect yet — but it still hands
+     * back the token, because the very next cookie-authenticated call is a refresh, and without a
+     * token to echo that refresh would have nothing to send and would be refused.
+     */
+    static final class CookieAuthCsrfFilter
+            extends org.springframework.web.filter.OncePerRequestFilter {
+
+        private final org.springframework.security.web.csrf.CookieCsrfTokenRepository repository;
+
+        CookieAuthCsrfFilter(
+                org.springframework.security.web.csrf.CookieCsrfTokenRepository repository) {
+            this.repository = repository;
+        }
+
+        @Override
+        protected void doFilterInternal(jakarta.servlet.http.HttpServletRequest request,
+                                        jakarta.servlet.http.HttpServletResponse response,
+                                        jakarta.servlet.FilterChain chain)
+                throws jakarta.servlet.ServletException, java.io.IOException {
+            String path = request.getRequestURI();
+
+            if (isCookieRoute(path)) {
+                String header = request.getHeader(CSRF_HEADER);
+                if (header == null || header.isBlank()) {
+                    response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_FORBIDDEN);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.getWriter().write("{\"status\":403,\"error\":\"Forbidden\","
+                            + "\"message\":\"Missing " + CSRF_HEADER + " header.\"}");
+                    return;
+                }
+            } else if (path != null && path.equals("/api/auth/login")) {
+                issueCsrfCookie(request, response);
+            }
+
+            chain.doFilter(request, response);
+        }
+
+        /** True when the browser would attach the session cookie to this request on its own. */
+        private boolean isCookieRoute(String path) {
+            return path != null && (path.equals("/api/auth/refresh") || path.equals("/api/auth/logout"));
+        }
+
+        private void issueCsrfCookie(jakarta.servlet.http.HttpServletRequest request,
+                                     jakarta.servlet.http.HttpServletResponse response) {
+            boolean alreadyPrimed = java.util.Arrays.stream(
+                            Optional.ofNullable(request.getCookies()).orElse(new
+                                    jakarta.servlet.http.Cookie[0]))
+                    .anyMatch(c -> "XSRF-TOKEN".equals(c.getName()));
+
+            if (!alreadyPrimed) {
+                // generateToken + saveToken is the 6.x API; saveGeneratedToken no longer exists.
+                repository.saveToken(repository.generateToken(request), request, response);
+            }
+        }
+    }
+
+    /**
      * CSRF is enforced only on routes authenticated by the refresh cookie.
      *
      * <p>A request authenticated by the Authorization header carries no ambient credential, so
@@ -138,8 +228,10 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(corsProperties.getOriginList());
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(
-                List.of("Authorization", "Content-Type", CSRF_HEADER, "X-Requested-With"));
+        // "X-XSRF-TOKEN" carries the value of the readable CSRF cookie on the
+        // cookie-authenticated refresh/logout calls (the double-submit pattern).
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", CSRF_HEADER,
+                "X-XSRF-TOKEN", "X-Requested-With"));
         config.setExposedHeaders(List.of("Set-Cookie"));
         // Required so the refresh cookie is sent; never "*" with credentials.
         config.setAllowCredentials(true);

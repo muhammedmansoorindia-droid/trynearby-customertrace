@@ -39,6 +39,12 @@ export function RestaurantDashboard() {
 
   const summary = useResource(useCallback(() => reportsApi.restaurantSummary(), []), []);
   const campaigns = useResource(useCallback(() => campaignsApi.listForRestaurant(), []), []);
+  // Only the pending count is needed here, so it asks the backend for exactly that rather than
+  // reusing a broad list and counting it client-side.
+  const awaitingApproval = useResource(
+    useCallback(() => campaignsApi.listForRestaurant({ status: 'PENDING', size: 100 }), []),
+    [],
+  );
   const pendingBookings = useResource(
     useCallback(() => bookingsApi.list('restaurant', { status: 'REQUESTED', size: 10 }), []),
     [],
@@ -69,6 +75,17 @@ export function RestaurantDashboard() {
             </Button>
             <Link to="/restaurant/scan">
               <Button>Scan &amp; redeem</Button>
+            </Link>
+            <Link to="/restaurant/campaigns?status=PENDING">
+              <Button variant="secondary">
+                Campaign requests
+                {/* The count is the backend's, so it agrees with the queue it links to. */}
+                {awaitingApproval.data?.content.length ? (
+                  <span className="ml-1.5 rounded-full bg-primary px-2 py-0.5 text-on-primary">
+                    {awaitingApproval.data.content.length}
+                  </span>
+                ) : null}
+              </Button>
             </Link>
           </div>
         }

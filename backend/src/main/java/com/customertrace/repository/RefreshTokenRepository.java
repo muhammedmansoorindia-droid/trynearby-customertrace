@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import com.customertrace.domain.RefreshToken;
 
-/** Refresh-token persistence. Only a BCrypt hash is stored. */
+/** Refresh-token persistence. Only a one-way SHA-256 digest is stored. */
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long> {
 
     Optional<RefreshToken> findByTokenHash(String tokenHash);

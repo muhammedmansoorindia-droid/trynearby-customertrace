@@ -64,7 +64,7 @@ export interface StatusHistoryEntry {
 
 export interface CreateCampaignRequest {
   restaurantId: number;
-  title: string;
+  /** No title: the backend names the campaign from its generated code. */
   description?: string;
   offerText: string;
   discountPercent: number;
@@ -147,9 +147,15 @@ function toBackendStatus(value: string): BackendCampaignStatus | undefined {
     : undefined;
 }
 
+/** Order a campaign list is returned in. Mirrors the backend's `CampaignSort`. */
+export type CampaignSort = 'newest' | 'oldest' | 'updated' | 'target';
+
 export interface CampaignQuery {
   status?: string;
+  /** Free-text match on the campaign code, creator name or restaurant name. */
   search?: string;
+  /** Server-side ordering. Omit to let the backend apply its default. */
+  sort?: CampaignSort;
   /** Zero-based page index passed straight to the backend. */
   page?: number;
   /** Rows per page. */
@@ -169,21 +175,16 @@ async function fetchScoped(base: string, query: CampaignQuery = {}): Promise<Pag
   const size = query.size ?? DEFAULT_SIZE;
   const params = new URLSearchParams({ page: String(page), size: String(size) });
   if (status) params.set('status', status);
+  if (query.sort) params.set('sort', query.sort);
+
+  // Search and sort are answered by the database, not by filtering the page we happened to
+  // receive. Filtering after the fact would only ever see the current page, so a term matching a
+  // campaign on page 3 would report "no results" while standing on page 1.
+  const term = query.search?.trim();
+  if (term) params.set('q', term);
 
   const body = await api.get<unknown>(`${base}?${params.toString()}`);
-  const result = toPage<Campaign>(body, page, size);
-
-  const search = query.search?.trim().toLowerCase();
-  if (!search) return result;
-
-  const content = result.content.filter(
-    (c) =>
-      c.title.toLowerCase().includes(search) ||
-      (c.restaurantName ?? '').toLowerCase().includes(search) ||
-      (c.creatorName ?? '').toLowerCase().includes(search),
-  );
-  // totalElements follows the filtered rows so the badge count matches what is displayed.
-  return { ...result, content, totalElements: content.length };
+  return toPage<Campaign>(body, page, size);
 }
 
 export const campaignsApi = {

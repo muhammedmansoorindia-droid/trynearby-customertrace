@@ -40,15 +40,16 @@ class RedemptionIntegrationTest extends IntegrationTestBase {
         admin = createUser("boss@Trynearby", "ADMIN", "Boss");
         restaurant = createRestaurant("chef@restrnt", "Copper Kitchen", "Kochi");
         createRestaurant("other@restrnt", "Other Kitchen", "Chennai");
+        // The creator must be assigned before it may post a campaign for this venue.
+        createCreator("star@creator", "Star", "@star", restaurant);
         restaurantUser = userRepository.findByUserIdIgnoreCase("chef@restrnt").orElseThrow();
         otherRestaurantUser = userRepository.findByUserIdIgnoreCase("other@restrnt").orElseThrow();
-        createCreator("star@creator", "Star", "@star");
         creatorUser = userRepository.findByUserIdIgnoreCase("star@creator").orElseThrow();
 
         // Build a live, fully approved campaign and remember its promo code.
         String campaign = """
-                {"restaurantId":%d,"title":"Live Test","offerText":"15%% off",
-                 "discountPercent":15,"targetCustomers":50,"durationDays":10,
+                {"restaurantId":%d,"offerText":"5%% off",
+                 "discountPercent":5,"targetCustomers":50,"durationDays":10,
                  "startDate":"%s","endDate":"%s"}
                 """.formatted(restaurant.getId(), LocalDate.now().minusDays(1),
                 LocalDate.now().plusDays(30));
@@ -197,26 +198,23 @@ class RedemptionIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
-    @DisplayName("an exclusive E-J code is redeemable only once per restaurant per month")
-    void exclusiveTierIsOncePerMonth() throws Exception {
-        // The generator prefers an exclusive tier while one is unspent for this month.
-        assertThat(promoCode.charAt(6)).isBetween('E', 'J');
+    @DisplayName("every customer on a restricted-discount campaign can still redeem")
+    void restrictedDiscountCampaignServesItsWholeTarget() throws Exception {
+        // The 5% fixture yields letter E, which is reusable, so this campaign is never capped at
+        // one redemption. Its 50-customer target must remain reachable: the monthly cap governs how
+        // many *campaigns* a restaurant may run per high discount, not how many diners redeem one.
+        assertThat(promoCode.charAt(6)).isEqualTo('E');
 
-        String body = """
-                {"promoCode":"%s","customerRef":"guest-a","billPaise":100000,
-                 "discountPaise":10000}
-                """.formatted(promoCode);
+        for (int i = 0; i < 3; i++) {
+            String body = """
+                    {"promoCode":"%s","customerRef":"guest-%d","billPaise":100000,
+                     "discountPaise":10000}
+                    """.formatted(promoCode, i);
 
-        mockMvc.perform(withToken(post("/api/restaurants/scan/redeem"), tokenFor(restaurantUser))
-                        .contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isCreated());
-
-        // A different customer on the same exclusive code is blocked for the rest of the month.
-        mockMvc.perform(withToken(post("/api/restaurants/scan/redeem"), tokenFor(restaurantUser))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body.replace("guest-a", "guest-b")))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("TIER_MONTHLY_LIMIT"));
+            mockMvc.perform(withToken(post("/api/restaurants/scan/redeem"), tokenFor(restaurantUser))
+                            .contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isCreated());
+        }
     }
 
     @Test
@@ -224,8 +222,8 @@ class RedemptionIntegrationTest extends IntegrationTestBase {
     void rejectedCampaignCannotBeRedeem() throws Exception {
         // Built by concatenation rather than a text block, to keep the JSON escapes unambiguous.
         String campaign = "{\"restaurantId\":" + restaurant.getId()
-                + ",\"title\":\"Doomed\",\"offerText\":\"10% off\""
-                + ",\"discountPercent\":10,\"targetCustomers\":20,\"durationDays\":5"
+                + ",\"offerText\":\"5% off\""
+                + ",\"discountPercent\":5,\"targetCustomers\":20,\"durationDays\":5"
                 + ",\"startDate\":\"" + LocalDate.now().minusDays(1)
                 + "\",\"endDate\":\"" + LocalDate.now().plusDays(10) + "\"}";
 

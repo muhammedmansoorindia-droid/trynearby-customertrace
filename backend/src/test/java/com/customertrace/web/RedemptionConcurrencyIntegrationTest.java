@@ -53,7 +53,8 @@ class RedemptionConcurrencyIntegrationTest extends ConcurrencyTestBase {
     void setUp() {
         admin = createUser("boss" + runId + "@Trynearby", "ADMIN", "Boss");
         restaurant = createRestaurant("chef" + runId + "@restrnt", "Copper Kitchen", "Kochi");
-        createCreator("star" + runId + "@creator", "Star", "@star" + runId);
+        // The creator may only post campaigns for a restaurant it is actively assigned to.
+        createCreatorWithId("star" + runId + "@creator", "Star", "@star" + runId, restaurant);
         restaurantUser = userRepository.findByUserIdIgnoreCase("chef" + runId + "@restrnt")
                 .orElseThrow();
         creator = creatorRepository.findAll().stream()
@@ -79,8 +80,8 @@ class RedemptionConcurrencyIntegrationTest extends ConcurrencyTestBase {
     private long activeCampaign(Restaurant owner, User approver, int targetCustomers)
             throws Exception {
         String body = "{\"restaurantId\":" + owner.getId()
-                + ",\"title\":\"Concurrent\",\"offerText\":\"15% off\""
-                + ",\"discountPercent\":15,\"targetCustomers\":" + targetCustomers
+                + ",\"offerText\":\"5% off\""
+                + ",\"discountPercent\":5,\"targetCustomers\":" + targetCustomers
                 + ",\"durationDays\":10,\"startDate\":\""
                 + java.time.LocalDate.now().minusDays(1)
                 + "\",\"endDate\":\"" + java.time.LocalDate.now().plusDays(30) + "\"}";
@@ -154,17 +155,15 @@ class RedemptionConcurrencyIntegrationTest extends ConcurrencyTestBase {
                                 .content(redeemBody(code, "guest-" + counter.getAndIncrement())))
                         .andReturn().getResponse().getStatus());
 
-        // A-D tiers are reusable, so every distinct customer is a genuine visit. E-J codes are
-        // capped at one redemption per restaurant per calendar month, so only the first wins.
-        boolean exclusive = code.charAt(6) >= 'E' && code.charAt(6) <= 'J';
-        int expected = exclusive ? 1 : THREADS;
-
+        // Every distinct customer is a genuine visit. The monthly per-restaurant limit governs how
+        // many *campaigns* may carry a high discount, not how many diners redeem one campaign, so
+        // no racer is turned away here regardless of the code's letter.
         long created = statuses.stream().filter(s -> s == 201).count();
-        assertThat(created).withFailMessage("statuses=%s tier=%s", statuses, code.charAt(6))
-                .isEqualTo(expected);
-        // Losers must receive a domain error, never a 500 from a constraint violation.
+        assertThat(created).withFailMessage("statuses=%s code=%s", statuses, code)
+                .isEqualTo(THREADS);
+        // And no racer may surface as a 500 from a constraint violation.
         assertThat(statuses).filteredOn(s -> s >= 500).isEmpty();
-        assertThat(redemptionCount(campaignId)).isEqualTo(expected);
+        assertThat(redemptionCount(campaignId)).isEqualTo(THREADS);
     }
 
     @Test
@@ -187,34 +186,25 @@ class RedemptionConcurrencyIntegrationTest extends ConcurrencyTestBase {
     }
 
     @Test
-    @DisplayName("an E-J code cannot be redeemed twice by one restaurant in the same month")
-    void exclusiveTierRaceAdmitsOneRedemption() throws Exception {
+    @DisplayName("concurrent redemptions by different diners all succeed")
+    void concurrentDifferentDinersAllRedeem() throws Exception {
+        // Redemption has no monthly cap: the per-restaurant discount limit is settled when the
+        // campaign is submitted. Distinct customer refs mean the daily-duplicate key never fires,
+        // so every racer must be admitted — a lost redemption here would be a real bug.
         long campaignId = activeCampaign(50);
         String code = promoCodeFor(campaignId);
-
-        // Only meaningful for an exclusive tier; the generator prefers one when available.
-        if (code.charAt(6) < 'E' || code.charAt(6) > 'J') {
-            return;
-        }
 
         AtomicInteger counter = new AtomicInteger();
         List<Integer> statuses = runSimultaneously(THREADS, () ->
                 mockMvc.perform(withToken(post("/api/restaurants/scan/redeem"),
                                 tokenFor(restaurantUser))
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content(redeemBody(code, "tier-" + counter.getAndIncrement())))
+                                .content(redeemBody(code, "guest-" + counter.getAndIncrement())))
                         .andReturn().getResponse().getStatus());
 
-        assertThat(statuses).filteredOn(s -> s == 201).hasSize(1);
-        // A losing racer must surface the domain error, never a 500 from the unique key.
+        assertThat(statuses).filteredOn(s -> s == 201).hasSize(THREADS);
         assertThat(statuses).filteredOn(s -> s >= 500).isEmpty();
-
-        Integer ledgerRows = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM promo_tier_ledger WHERE restaurant_id = ? "
-                        + "AND tier_letter = ?",
-                Integer.class, restaurant.getId(), String.valueOf(code.charAt(6)));
-        assertThat(ledgerRows).isEqualTo(1);
-        assertThat(redemptionCount(campaignId)).isEqualTo(1);
+        assertThat(redemptionCount(campaignId)).isEqualTo(THREADS);
     }
 @Test
     @DisplayName("concurrent redemptions on independent campaigns are not blocked by each other")
@@ -226,6 +216,8 @@ class RedemptionConcurrencyIntegrationTest extends ConcurrencyTestBase {
                 "Kochi");
         User secondUser = userRepository.findByUserIdIgnoreCase("chef2" + runId + "@restrnt")
                 .orElseThrow();
+        // The same creator also needs an assignment to this second venue to target it.
+        assignCreator(creator, second);
 
         long first = activeCampaign(20);
         long second2 = activeCampaign(second, secondUser, 20);

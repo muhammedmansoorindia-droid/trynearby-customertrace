@@ -24,7 +24,26 @@ public final class SubscriptionDtos {
             Instant updatedAt) {
     }
 
-    /** A purchasable plan offered to restaurants. */
+    /**
+ * A platform subscription as an administrator sees it.
+ *
+ * <p>Adds the restaurant's name to the response a restaurant sees for itself, so the admin table
+ * never has to resolve a bare id. No payment or card data is represented anywhere here.
+ */
+public record AdminSubscriptionResponse(
+        Long id,
+        Long restaurantId,
+        String restaurantName,
+        String planCode,
+        String planName,
+        String status,
+        String billingCycle,
+        long amountPaise,
+        boolean entitled,
+        Instant renewsAt) {
+}
+
+/** A purchasable plan offered to restaurants. */
     public record PlanResponse(
             Long id,
             String code,

@@ -33,12 +33,15 @@ _, me_r2 = call("GET", "/api/auth/me", token=R2)
 REST1, REST2 = me_r1["restaurantId"], me_r2["restaurantId"]
 
 
-def make_live(target=20, days=5, restaurant=None, label="qa"):
-    """Creates a draft, submits and dual-approves it; returns (campaign_id, promo_code)."""
+def make_live(target=20, days=5, restaurant=None, discount=5):
+    """Creates a draft, submits and dual-approves it; returns (campaign_id, promo_code).
+
+    No title is sent: the server names the campaign from its generated code.
+    """
     restaurant = restaurant or REST1
     st, c = call("POST", "/api/creator/campaigns", token=C1, body={
-        "restaurantId": restaurant, "title": f"QA-{label}-{target}", "offerText": "15% off",
-        "discountPercent": 15, "targetCustomers": target, "durationDays": days,
+        "restaurantId": restaurant, "offerText": f"{discount}% off",
+        "discountPercent": discount, "targetCustomers": target, "durationDays": days,
         "startDate": "2020-01-01", "endDate": "2099-12-31"})
     assert st == 201, f"create failed: {st} {c}"
     call("POST", f"/api/creator/campaigns/{c['id']}/submit", token=C1)
@@ -55,10 +58,10 @@ malformed = [
     ("too long", "ABCDEFGH"),
     ("digits in the letter positions", "1B2005E"),
     ("non-numeric customer target", "ABXX05E"),
-    ("target below the 10 floor", "AB0905E"),
+    ("target of zero", "AB0005E"),
     ("duration of zero", "AB2000E"),
-    ("duration above 31", "AB2099E"),
-    ("tier outside A-J", "AB2005K"),
+    ("discount letter below B", "AB2005A"),
+    ("discount letter beyond J", "AB2005K"),
     ("unknown but well-formed code", "ZZ9999Z"),
 ]
 for name, code in malformed:
@@ -71,7 +74,7 @@ for name, code in malformed:
             f"scans {before} -> {after}")
 
 # ── A valid code: lookup is read-only ─────────────────────────────────────────
-cid, code = make_live(label="lookup")
+cid, code = make_live()
 scan_before = db("SELECT COUNT(*) FROM customertrace.scan_events")
 red_before = db("SELECT COUNT(*) FROM customertrace.redemptions")
 
@@ -117,7 +120,7 @@ r.check("P4", "Scan", "scan created no redemption row",
 # Exercised against RESTAURANT 2, whose E-J monthly tier budget is still intact.
 # RESTAURANT 1's exclusive tiers are fully spent by earlier runs, so a redemption
 # there would be legitimately refused with TIER_MONTHLY_LIMIT.
-cid_r, code_r = make_live(target=20, label="redeem", restaurant=REST2)
+cid_r, code_r = make_live(target=20, restaurant=REST2)
 code = code_r
 _, rep2_before = call("GET", "/api/reports/restaurant/summary", token=R2)
 
@@ -126,65 +129,47 @@ _, rep2_before = call("GET", "/api/reports/restaurant/summary", token=R2)
 CUST_A = f"qa-{RUN}-a"
 CUST_B = f"qa-{RUN}-b"
 
-# E-J tiers are capped at six per restaurant per calendar month. Repeated QA runs against a
-# persistent dev database can exhaust that budget, after which every redemption is correctly
-# refused. When it is spent, these checks are BLOCKED rather than reported as defects — the
-# same assertions passed earlier in the run while a tier was still free.
-tier_budget_left = db(
-    "SELECT COUNT(*) FROM (SELECT 'E' l UNION SELECT 'F' UNION SELECT 'G' UNION SELECT 'H' "
-    "UNION SELECT 'I' UNION SELECT 'J') t WHERE NOT EXISTS ("
-    "SELECT 1 FROM customertrace.promo_tier_ledger x WHERE x.restaurant_id="
-    f"{REST2} AND x.tier_letter=t.l AND x.calendar_month=DATE_FORMAT(NOW(),'%Y-%m'))") or "0"
-budget_available = int(tier_budget_left or 0) > 0
-
+# Redemption is no longer capped by the monthly discount allowance: the cap governs how many
+# campaigns a restaurant may run per high discount, settled when the campaign is submitted. The
+# 5% fixture is reusable anyway, so these checks always run.
 st, red = call("POST", "/api/restaurants/scan/redeem", token=R2,
                body={"promoCode": code, "billPaise": 240000, "channel": "DINE_IN",
                      "customerRef": CUST_A})
 
-if not budget_available:
-    r.note("P4", "Redeem", "redemption + customer-delta assertions", "BLOCKED",
-           f"all {tier_budget_left} E-J tiers spent for restaurant {REST2} in "
-           f"{'the current month'}; the tier rule correctly refuses redemption")
-else:
-    r.check("P4", "Redeem", "valid redemption accepted", st in (200, 201),
-            f"HTTP {st} {code_of(red) if isinstance(red, dict) else red}")
-    r.check("P4", "Redeem", "redemption reports verified customers",
-            isinstance(red, dict) and red.get("verifiedCustomers") == 1,
-            f"verifiedCustomers={red.get('verifiedCustomers') if isinstance(red, dict) else red}")
+r.check("P4", "Redeem", "valid redemption accepted", st in (200, 201),
+        f"HTTP {st} {code_of(red) if isinstance(red, dict) else red}")
+r.check("P4", "Redeem", "redemption reports verified customers",
+        isinstance(red, dict) and red.get("verifiedCustomers") == 1,
+        f"verifiedCustomers={red.get('verifiedCustomers') if isinstance(red, dict) else red}")
 
-    _, rep = call("GET", "/api/reports/restaurant/summary", token=R2)
-    r.check("P4", "Redeem", "verified customers rose by exactly one",
-            rep.get("verifiedCustomers") == (rep2_before.get("verifiedCustomers") or 0) + 1,
-            f"{rep2_before.get('verifiedCustomers')} -> {rep.get('verifiedCustomers')}")
-    r.check("P4", "Redeem", "redemption row persisted once",
-            int(db(f"SELECT COUNT(*) FROM customertrace.redemptions "
-                   f"WHERE campaign_id={cid_r}") or 0) == 1, "one redemption row")
-    r.check("P4", "Redeem", "scan and redemption counts tracked separately",
-            rep.get("scans") is not None and rep.get("verifiedCustomers") is not None,
-            f"scans={rep.get('scans')} customers={rep.get('verifiedCustomers')}")
+_, rep = call("GET", "/api/reports/restaurant/summary", token=R2)
+r.check("P4", "Redeem", "verified customers rose by exactly one",
+        rep.get("verifiedCustomers") == (rep2_before.get("verifiedCustomers") or 0) + 1,
+        f"{rep2_before.get('verifiedCustomers')} -> {rep.get('verifiedCustomers')}")
+r.check("P4", "Redeem", "redemption row persisted once",
+        int(db(f"SELECT COUNT(*) FROM customertrace.redemptions "
+               f"WHERE campaign_id={cid_r}") or 0) == 1, "one redemption row")
+r.check("P4", "Redeem", "scan and redemption counts tracked separately",
+        rep.get("scans") is not None and rep.get("verifiedCustomers") is not None,
+        f"scans={rep.get('scans')} customers={rep.get('verifiedCustomers')}")
 
 # ── Duplicate redemption by the same customer is prevented ─────────────────────
 st, dup = call("POST", "/api/restaurants/scan/redeem", token=R2,
                body={"promoCode": code, "billPaise": 100000, "channel": "DINE_IN",
                      "customerRef": CUST_A})
-if budget_available:
-    r.check("P4", "Redeem", "same-customer duplicate refused", st in (409, 400),
-            f"HTTP {st} {code_of(dup) if isinstance(dup, dict) else dup}")
-    r.check("P4", "Redeem", "duplicate wrote no extra row",
-            int(db(f"SELECT COUNT(*) FROM customertrace.redemptions "
-                   f"WHERE campaign_id={cid_r}") or 0) == 1, "still one redemption row")
+r.check("P4", "Redeem", "same-customer duplicate refused", st in (409, 400),
+        f"HTTP {st} {code_of(dup) if isinstance(dup, dict) else dup}")
+r.check("P4", "Redeem", "duplicate wrote no extra row",
+        int(db(f"SELECT COUNT(*) FROM customertrace.redemptions "
+               f"WHERE campaign_id={cid_r}") or 0) == 1, "still one redemption row")
 
-    # A second distinct customer: blocked on an E-J tier, allowed on a reusable A-D tier.
-    tier_used = code[6]
-    st_other, _ = call("POST", "/api/restaurants/scan/redeem", token=R2,
-                       body={"promoCode": code, "billPaise": 150000, "channel": "TAKEAWAY",
-                             "customerRef": CUST_B})
-    if tier_used in "EFGHIJ":
-        r.check("P4", "Redeem", "second customer blocked on an exclusive tier (rule, not a bug)",
-                st_other in (400, 409), f"tier={tier_used} HTTP {st_other}")
-    else:
-        r.check("P4", "Redeem", "different customer on same code accepted",
-                st_other in (200, 201), f"tier={tier_used} HTTP {st_other}")
+# A second distinct customer is always admitted: the monthly discount allowance governs how many
+# campaigns a restaurant may run, not how many diners redeem one. The 5% fixture is letter E.
+st_other, _ = call("POST", "/api/restaurants/scan/redeem", token=R2,
+                   body={"promoCode": code, "billPaise": 150000, "channel": "TAKEAWAY",
+                         "customerRef": CUST_B})
+r.check("P4", "Redeem", "a second distinct customer redeems the same code",
+        st_other in (200, 201), f"letter={code[6]} HTTP {st_other}")
 
 # ── Cross-restaurant redemption is rejected ───────────────────────────────────
 st, cross = call("POST", "/api/restaurants/scan/redeem", token=R1,
@@ -193,24 +178,26 @@ st, cross = call("POST", "/api/restaurants/scan/redeem", token=R1,
 r.check("P4", "Tenant isolation", "cross-restaurant redemption rejected",
         st in (403, 404), f"HTTP {st} {code_of(cross) if isinstance(cross, dict) else cross}")
 
-# ── E-J tiers are one-use per restaurant per month; A-D are reusable ────────────
-# The ledger is monthly and per restaurant, so read it rather than assume.
+# ── Discount letters: G-J (7-10%) are rationed per restaurant per month ─────────
+# The ledger is keyed by (restaurant, calendar month, letter), so read it rather than assume.
+# Only restricted letters are ever written there; B-F are reusable and claim nothing.
 ledger = db("SELECT GROUP_CONCAT(DISTINCT tier_letter) FROM customertrace.promo_tier_ledger "
             f"WHERE restaurant_id={REST1}")
-used_exclusive = set(ledger.split(",")) if ledger else set()
-r.check("P4", "Tier rules", "exclusive tiers E-J are rationed in the ledger",
-        bool(used_exclusive) and used_exclusive.issubset(set("EFGHIJ")),
-        f"tiers spent at restaurant {REST1}: {sorted(used_exclusive)}")
-r.check("P4", "Tier rules", "at most six exclusive tiers per restaurant per month",
-        len(used_exclusive) <= 6, f"{len(used_exclusive)} tiers spent this month")
+used_restricted = set(ledger.split(",")) if ledger else set()
+r.check("P4", "Discount rules", "only G-J letters are rationed in the ledger",
+        bool(used_restricted) and used_restricted.issubset(set("GHIJ")),
+        f"letters rationed at restaurant {REST1}: {sorted(used_restricted)}")
+r.check("P4", "Discount rules", "at most four rationed discounts per restaurant per month",
+        len(used_restricted) <= 4, f"{len(used_restricted)} rationed this month")
 
-cid_e, code_e = make_live(target=20, label="tier", restaurant=REST2)
-tier_e = code_e[6]
-is_exclusive = tier_e in "EFGHIJ"
-ledger_now = db("SELECT COUNT(*) FROM customertrace.promo_tier_ledger "
-                f"WHERE restaurant_id={REST2} AND tier_letter='{tier_e}' "
-                "AND calendar_month=DATE_FORMAT(NOW(),'%Y-%m')")
-budget_spent = int(ledger_now or 0) > 0
+# A reusable 2-6% campaign: letter E, no ledger claim, and every customer may redeem.
+cid_e, code_e = make_live(target=20, restaurant=REST2, discount=5)
+r.check("P4", "Discount rules", "a 5% campaign is letter E", code_e[6] == "E",
+        f"code={code_e}")
+r.check("P4", "Discount rules", "a reusable discount claims no ledger row",
+        int(db("SELECT COUNT(*) FROM customertrace.promo_tier_ledger "
+               f"WHERE restaurant_id={REST2} AND tier_letter='E'") or 0) == 0,
+        "no E row")
 
 st_first, _ = call("POST", "/api/restaurants/scan/redeem", token=R2,
                    body={"promoCode": code_e, "billPaise": 200000, "channel": "DINE_IN",
@@ -218,27 +205,14 @@ st_first, _ = call("POST", "/api/restaurants/scan/redeem", token=R2,
 st_second, _ = call("POST", "/api/restaurants/scan/redeem", token=R2,
                     body={"promoCode": code_e, "billPaise": 200000, "channel": "DINE_IN",
                           "customerRef": f"tier-{RUN}-b"})
-
-if is_exclusive:
-    # An E-J tier allows exactly one redemption per restaurant per calendar month.
-    if budget_spent:
-        r.check("P4", "Tier rules", "E-J tier already spent this month refuses both",
-                st_first in (400, 409) and st_second in (400, 409),
-                f"tier={tier_e} first={st_first} second={st_second}")
-    else:
-        r.check("P4", "Tier rules", "first redemption on a free E-J tier succeeds",
-                st_first in (200, 201), f"tier={tier_e} HTTP {st_first}")
-        r.check("P4", "Tier rules", "second redemption on the same E-J tier is capped",
-                st_second in (400, 409), f"tier={tier_e} HTTP {st_second}")
-else:
-    r.check("P4", "Tier rules", "reusable A-D tier allows a second distinct customer",
-            st_first in (200, 201) and st_second in (200, 201),
-            f"tier={tier_e} first={st_first} second={st_second}")
+r.check("P4", "Discount rules", "a reusable-discount campaign serves two distinct customers",
+        st_first in (200, 201) and st_second in (200, 201),
+        f"first={st_first} second={st_second}")
 
 # ── Concurrency: the same code and customer from many threads ─────────────────
 # Also on RESTAURANT 2, whose tier budget is intact, so the race is genuinely reachable
 # rather than short-circuited by the monthly tier rule.
-cid_c, code_c = make_live(target=40, label="race", restaurant=REST2)
+cid_c, code_c = make_live(target=40, restaurant=REST2)
 results = []
 lock = threading.Lock()
 
@@ -271,7 +245,7 @@ r.check("P4", "Concurrency", "no concurrent request produced a server error",
         all(s < 500 for s in results), f"statuses={sorted(results)}")
 
 # Distinct customers on one code: the quota must cap them.
-cid_q, code_q = make_live(target=10, label="quota", restaurant=REST2)
+cid_q, code_q = make_live(target=10, restaurant=REST2)
 q_results = []
 
 

@@ -83,11 +83,18 @@ public class JwtService {
     /**
      * Creates the refresh token. Its family id ties a rotation chain together so that
      * replaying an already-rotated token can be detected.
+     *
+     * <p>The {@code jti} is what makes each token distinct. Without it every claim here is derived
+     * from the user, the family and second-resolution timestamps, so two rotations inside the same
+     * second — a login immediately followed by a refresh, or two fast rotations — would mint
+     * byte-identical tokens. The rotation would then collide with the stored {@code token_hash}
+     * unique key and the caller would see a spurious conflict instead of a working session.
      */
     public String createRefreshToken(Long userId, String userIdName, String familyId) {
         Instant now = Instant.now();
         Instant expiry = now.plus(properties.getRefreshTokenTtl());
         return Jwts.builder()
+                .id(newFamilyId())
                 .issuer(properties.getIssuer())
                 .subject(userIdName)
                 .claim(CLAIM_USER_ID, userId)

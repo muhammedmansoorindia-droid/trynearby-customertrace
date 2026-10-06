@@ -25,13 +25,16 @@ public final class CampaignDtos {
     private CampaignDtos() {
     }
 
+    /**
+     * Body for creating a campaign.
+ *
+ * <p>There is no {@code title}: the campaign is named by the server from these very settings, so
+     * the name always states the real target, duration and discount. A client that still sends one
+     * is ignored rather than trusted.
+ */
     public record CreateCampaignRequest(
             @NotNull(message = "A restaurant must be selected")
             Long restaurantId,
-
-            @NotBlank(message = "A title is required")
-            @Size(max = 160, message = "Title must be at most 160 characters")
-            String title,
 
             @Size(max = 1000, message = "Description must be at most 1000 characters")
             String description,
@@ -40,20 +43,23 @@ public final class CampaignDtos {
             @Size(max = 255, message = "Offer must be at most 255 characters")
             String offerText,
 
-            @Min(value = 0, message = "Discount cannot be negative")
-            @Max(value = 100, message = "Discount cannot exceed 100%")
+            // Must land on 2-10 so it maps to exactly one discount letter (B-J). A creator cannot
+            // pick an arbitrary percentage, because the code's last character has to state the
+            // discount for staff reading the QR at the till.
+            @Min(value = 2, message = "Discount must be between 2% and 10%")
+            @Max(value = 10, message = "Discount must be between 2% and 10%")
             int discountPercent,
 
             @Min(value = 0, message = "Minimum bill cannot be negative")
             Long minBillPaise,
 
-            // Bounded to 10-99 because the value is encoded as the promo code's two NN digits.
-            @Min(value = 10, message = "Customer limit must be between 10 and 99")
-            @Max(value = 99, message = "Customer limit must be between 10 and 99")
+            // Bounded to 1-99 because the value is encoded as the promo code's two NN digits.
+            @Min(value = 1, message = "Customer target must be at least 1")
+            @Max(value = 99, message = "Customer target must be at most 99")
             int targetCustomers,
 
             @Min(value = 1, message = "Duration must be at least 1 day")
-            @Max(value = 31, message = "Duration must be at most 31 days")
+            @Max(value = 99, message = "Duration must be at most 99 days")
             int durationDays,
 
             @NotNull(message = "A start date is required")

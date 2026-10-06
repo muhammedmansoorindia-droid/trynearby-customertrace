@@ -3,6 +3,7 @@ package com.customertrace.web.controller;
 import java.util.List;
 
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,12 +46,18 @@ public class AdminCampaignController {
     }
 
     @GetMapping
-    @Operation(summary = "All campaigns, optionally filtered by status")
+    @Operation(summary = "All campaigns, optionally filtered by status, text and order")
     public ResponseEntity<List<CampaignDtos.CampaignResponse>> list(
+            @AuthenticationPrincipal CurrentUser actor,
             @RequestParam(required = false) CampaignStatus status,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "NEWEST") String sort,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return ResponseEntity.ok(queries.listAll(status, PageRequest.of(page, size)));
+        // The actor is passed on so each row's `canApprove` reflects this administrator; dropping
+        // it would leave the review queue with no decidable campaign and no approval controls.
+        return ResponseEntity.ok(
+                queries.listAll(actor, status, q, CampaignQueryService.pageOf(page, size, sort)));
     }
 
     @GetMapping("/{id}")

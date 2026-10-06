@@ -29,28 +29,68 @@ import { campaignsApi } from '@/services/backend/campaigns';
 import { toDateKey } from '@/utils/format';
 
 const STEP_TITLES = ['Restaurant', 'Offer', 'Reach', 'Review'];
-const MIN_TARGET = 10;
+
+/**
+ * The discount choices, mirroring the backend's B-J mapping.
+ *
+ * <p>2%-6% is reusable: a restaurant may run as many of those as it likes in a month. 7%-10% may
+ * back only one campaign per restaurant per calendar month, so the creator is told before
+ * submitting rather than being refused afterwards.
+ */
+const DISCOUNTS = [
+  { percent: 2, restricted: false },
+  { percent: 3, restricted: false },
+  { percent: 4, restricted: false },
+  { percent: 5, restricted: false },
+  { percent: 6, restricted: false },
+  { percent: 7, restricted: true },
+  { percent: 8, restricted: true },
+  { percent: 9, restricted: true },
+  { percent: 10, restricted: true },
+] as const;
+
+/** The code letter for a discount, matching DiscountTiers.letterFor on the server. */
+function discountLetter(percent: number): string {
+  return String.fromCharCode('B'.charCodeAt(0) + percent - 2);
+}
+
+const MIN_TARGET = 1;
 const MAX_TARGET = 99;
 const MIN_DAYS = 1;
-const MAX_DAYS = 31;
+const MAX_DAYS = 99;
 
 export function CreatorWizard() {
   const navigate = useNavigate();
 
   const [step, setStep] = useState(0);
   const [restaurantId, setRestaurantId] = useState('');
-  const [title, setTitle] = useState('');
   const [offerText, setOfferText] = useState('');
-  const [discountPercent, setDiscountPercent] = useState(20);
+  const [discountPercent, setDiscountPercent] = useState(5);
   const [target, setTarget] = useState(25);
   const [duration, setDuration] = useState(7);
+  // Only the two leading letters are random, and they are re-drawn on demand. The NN, DD and
+  // discount letter are fixed by the settings below, so regenerating never changes the offer.
+  const [previewLetters, setPreviewLetters] = useState(() => randomLetters());
 
-  // Only restaurants this creator is actually assigned to may be targeted.
+  function randomLetters() {
+    const pick = () => String.fromCharCode(65 + Math.floor(Math.random() * 26));
+    return pick() + pick();
+  }
+
+  // Only restaurants this creator is actively assigned to may be targeted. Re-read on mount, so an
+  // assignment made in the admin portal shows up the next time the wizard is opened — no reload.
   const assignments = useResource(useCallback(() => assignmentsApi.listForCreator(), []), []);
 
-  const assignedIds = useMemo(
-    () => new Set((assignments.data ?? []).filter((a) => a.active).map((a) => a.restaurantId)),
+  const assigned = useMemo(
+    () => (assignments.data ?? []).filter((a) => a.active),
     [assignments.data],
+  );
+  const assignedIds = useMemo(() => new Set(assigned.map((a) => a.restaurantId)), [assigned]);
+
+  // The server resolves display names; the id is the fallback for a deleted profile.
+  const restaurantName = useCallback(
+    (id: string) => assigned.find((a) => String(a.restaurantId) === id)?.restaurantName,
+    [assigned],
   );
 
   const startDate = toDateKey();
@@ -59,14 +99,17 @@ export function CreatorWizard() {
     return toDateKey(new Date(y, (m ?? 1) - 1, (d ?? 1) + duration));
   }, [startDate, duration]);
 
-  // Shape preview only. The real code is minted server-side on submit; this shows the NN/DD the
-  // creator is committing to, without claiming a tier that may not be free.
-  const previewCode = `LL${String(target).padStart(2, '0')}${String(duration).padStart(2, '0')}X`;
+  // The two leading letters are random; the rest is derived from the settings. Shape preview only
+  // — the server mints the unique, ledger-checked code on submit and that becomes the campaign name.
+  const previewCode =
+    previewLetters +
+    String(target).padStart(2, '0') +
+    String(duration).padStart(2, '0') +
+    discountLetter(discountPercent);
 
   const createAndSubmit = useMutation(async () => {
     const draft = await campaignsApi.create({
       restaurantId: Number(restaurantId),
-      title: title.trim(),
       offerText: offerText.trim(),
       discountPercent,
       targetCustomers: target,
@@ -74,7 +117,7 @@ export function CreatorWizard() {
       startDate,
       endDate,
     });
-    // A draft with no code; submitting is what mints it and enters the queue.
+    // A draft with no issued code; submitting is what mints it and enters the queue.
     return campaignsApi.submit(draft.id);
   });
 
@@ -84,12 +127,7 @@ export function CreatorWizard() {
     if (created) navigate('/creator/campaigns');
   };
 
-  const stepValid = [
-    Boolean(restaurantId),
-    title.trim().length > 2 && offerText.trim().length > 2,
-    true,
-    true,
-  ][step];
+  const stepValid = [Boolean(restaurantId), offerText.trim().length > 2, true, true][step];
 
   return (
     <div className="max-w-3xl space-y-gutter">
@@ -138,12 +176,13 @@ export function CreatorWizard() {
               <select
                 className={inputClass}
                 value={restaurantId}
+                aria-label="Restaurant"
                 onChange={(event) => setRestaurantId(event.target.value)}
               >
                 <option value="">Choose a restaurant…</option>
                 {[...assignedIds].map((id) => (
                   <option key={id} value={id}>
-                    Restaurant #{id}
+                    {restaurantName(String(id)) ?? `Restaurant #${id}`}
                   </option>
                 ))}
               </select>
@@ -160,18 +199,28 @@ export function CreatorWizard() {
 
         {step === 1 ? (
           <div className="space-y-space-md">
-            <Field
-              label="Campaign title"
-              hint="Shown to the restaurant and in your own dashboard."
-            >
-              <input
-                className={inputClass}
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="Monsoon Biryani Bonanza"
-                maxLength={60}
-              />
-            </Field>
+            {/* No name field: the campaign is named by its generated code, so there is nothing
+                for the creator to type and nothing for them to get inconsistent with the offer. */}
+            <div className="rounded-lg bg-surface-container p-space-md text-center">
+              <p className="text-label-sm text-label-sm uppercase tracking-wide text-on-surface-variant">
+                Campaign code
+              </p>
+              <p className="font-mono text-display-md-mobile text-display-md-mobile text-on-surface">
+                {previewCode}
+              </p>
+              <p className="text-body-sm text-body-sm text-on-surface-variant">
+                {target} customers · {duration} days · {discountPercent}% off
+              </p>
+              <Button
+                variant="secondary"
+                className="mt-space-sm"
+                // Re-draws only the two letters. The target, duration and discount are fixed by
+                // the settings and are carried through untouched.
+                onClick={() => setPreviewLetters(randomLetters())}
+              >
+                New letters
+              </Button>
+            </div>
             <Field
               label="Offer text"
               hint="Be specific about what the diner gets — the admin checks this at review."
@@ -184,21 +233,23 @@ export function CreatorWizard() {
                 maxLength={80}
               />
             </Field>
-            <Field label="Discount" hint="Percentage applied at settlement.">
-              <div className="flex items-center gap-space-md">
-                <input
-                  type="range"
-                  min={5}
-                  max={50}
-                  step={5}
-                  value={discountPercent}
-                  onChange={(event) => setDiscountPercent(Number(event.target.value))}
-                  className="flex-1"
-                />
-                <span className="w-16 text-right font-headline-sm text-headline-sm text-primary">
-                  {discountPercent}%
-                </span>
-              </div>
+            <Field
+              label={`Discount — ${discountPercent}%`}
+              hint={`Code letter ${discountLetter(discountPercent)}. 2–6% is reusable; 7–10% may back only one campaign per restaurant per month.`}
+            >
+              <select
+                className={inputClass}
+                value={discountPercent}
+                aria-label="Discount"
+                onChange={(event) => setDiscountPercent(Number(event.target.value))}
+              >
+                {DISCOUNTS.map(({ percent, restricted }) => (
+                  <option key={percent} value={percent}>
+                    {percent}% ({discountLetter(percent)})
+                    {restricted ? ' — once per restaurant per month' : ''}
+                  </option>
+                ))}
+              </select>
             </Field>
           </div>
         ) : null}
@@ -247,12 +298,10 @@ export function CreatorWizard() {
               <div>
                 <dt className="text-body-sm text-body-sm text-on-surface-variant">Restaurant</dt>
                 <dd className="text-body-md text-body-md text-on-surface">
-                  {restaurantId ? `Restaurant #${restaurantId}` : '—'}
+                  {restaurantId
+                    ? (restaurantName(restaurantId) ?? `Restaurant #${restaurantId}`)
+                    : '—'}
                 </dd>
-              </div>
-              <div>
-                <dt className="text-body-sm text-body-sm text-on-surface-variant">Title</dt>
-                <dd className="text-body-md text-body-md text-on-surface">{title || '—'}</dd>
               </div>
               <div>
                 <dt className="text-body-sm text-body-sm text-on-surface-variant">Offer</dt>
@@ -273,9 +322,9 @@ export function CreatorWizard() {
                 </dd>
               </div>
               <div>
-                <dt className="text-body-sm text-body-sm text-on-surface-variant">Tier</dt>
+                <dt className="text-body-sm text-body-sm text-on-surface-variant">Discount</dt>
                 <dd className="text-body-md text-body-md text-on-surface">
-                  Assigned on issue
+                  {discountPercent}% (letter {discountLetter(discountPercent)})
                 </dd>
               </div>
             </dl>
@@ -288,15 +337,17 @@ export function CreatorWizard() {
                 {previewCode}
               </p>
               <p className="text-body-sm text-body-sm text-on-surface-variant">
-                The letters are assigned on issue; your {target} and {duration}-day choices are
-                already locked in.
+                The two letters are chosen by you and checked for uniqueness when you submit;
+                the {target}, {duration} and {discountPercent}% figures are already locked in.
               </p>
             </div>
 
             <Callout tone="info">
-              The code's tier letter is assigned by the server when you submit, preferring the
-              exclusive E–J tiers. Those can be used only once per restaurant per month, so if all
-              six are taken a reusable tier is assigned automatically.
+              Your {discountPercent}% discount maps to code letter{' '}
+              {discountLetter(discountPercent)}.{' '}
+              {DISCOUNTS.find((d) => d.percent === discountPercent)?.restricted
+                ? `7–10% may back only one campaign per restaurant per calendar month, so TryNearby may refuse this one if that discount is already used there this month.`
+                : '2–6% is reusable, so this can be submitted any number of times in a month.'}
             </Callout>
 
             {createAndSubmit.error ? (

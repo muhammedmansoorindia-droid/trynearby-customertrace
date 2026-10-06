@@ -6,9 +6,9 @@
  * dual-approval state, that cross-tenant ids are never sent from the client, and that failures
  * surface as errors rather than as empty data.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError, request, setAccessToken } from '@/services/api';
+import { ApiError, API_BASE_URL, request, setAccessToken } from '@/services/api';
 import { allowedNextStatuses, bookingsApi } from '@/services/backend/bookings';
 import { campaignsApi, toFrontendStatus } from '@/services/backend/campaigns';
 import { assignmentsApi, notificationsApi, reviewsApi } from '@/services/backend/community';
@@ -21,6 +21,11 @@ beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal('fetch', fetchMock);
   setAccessToken('test-token');
+});
+
+// The cookie tests stub `document`; leaving that in place would leak into later suites.
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 /** Makes every fetch call resolve with `body`. */
@@ -74,6 +79,62 @@ describe('request', () => {
     expect(new ApiError(401, {}).isUnauthorized).toBe(true);
     expect(new ApiError(403, {}).isForbidden).toBe(true);
     expect(new ApiError(409, {}).isUnauthorized).toBe(false);
+  });
+});
+
+describe('cookie-authenticated requests', () => {
+  /** Mirrors document.cookie holding the readable CSRF cookie the backend issues on login. */
+  function withXsrfCookie(value: string | null) {
+    vi.stubGlobal('document', { cookie: value === null ? '' : `XSRF-TOKEN=${value}` });
+  }
+
+  it('sends both the custom header and the echoed XSRF token', async () => {
+    reply({ accessToken: 'fresh' });
+    withXsrfCookie('abc-123');
+
+    await request('/api/auth/refresh', { method: 'POST', withCookie: true });
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    const headers = init.headers as Record<string, string>;
+    // Spring Security's CSRF repository requires the echo; sending only the custom
+    // header 403s, and a reload would sign the user out.
+    expect(headers['X-CT-CSRF']).toBe('1');
+    expect(headers['X-XSRF-TOKEN']).toBe('abc-123');
+    expect(init.credentials).toBe('include');
+  });
+
+  it('decodes a percent-encoded cookie value before echoing it', async () => {
+    reply({ accessToken: 'fresh' });
+    withXsrfCookie('a%20b');
+
+    await request('/api/auth/refresh', { method: 'POST', withCookie: true });
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect((init.headers as Record<string, string>)['X-XSRF-TOKEN']).toBe('a b');
+  });
+
+  it('omits the echo when no CSRF cookie has been issued yet', async () => {
+    reply({ accessToken: 'fresh' });
+    withXsrfCookie(null);
+
+    await request('/api/auth/refresh', { method: 'POST', withCookie: true });
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    const headers = init.headers as Record<string, string>;
+    expect(headers['X-CT-CSRF']).toBe('1');
+    expect(headers['X-XSRF-TOKEN']).toBeUndefined();
+  });
+
+  it('never sends the CSRF headers on ordinary API calls', async () => {
+    reply({ ok: true });
+    withXsrfCookie('abc-123');
+
+    await request('/api/auth/me');
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    const headers = init.headers as Record<string, string>;
+    expect(headers['X-CT-CSRF']).toBeUndefined();
+    expect(headers['X-XSRF-TOKEN']).toBeUndefined();
   });
 });
 
@@ -149,17 +210,33 @@ describe('campaignsApi', () => {
     expect(urlOf(0)).not.toContain('status=');
   });
 
-  it('filters the fetched page by search term', async () => {
+  it('asks the server to search rather than filtering the page in hand', async () => {
     reply([
       { id: 1, title: 'Biryani Bash', restaurantName: 'Copper', creatorName: 'Pooja' },
       { id: 2, title: 'Dinner Special', restaurantName: 'Silver', creatorName: 'Asha' },
     ]);
 
     const page = await campaignsApi.listForAdmin({ search: 'biryani' });
-    expect(page.content).toHaveLength(1);
-    expect(page.content[0].id).toBe(1);
-    // The count follows the filtered rows so a badge cannot disagree with the list.
-    expect(page.totalElements).toBe(1);
+
+    // The term goes to the database. Filtering the returned page here would only ever see the
+    // current page, so a match on page 3 would wrongly report "no results".
+    expect(urlOf(0)).toContain('q=biryani');
+    // Rows are passed through untouched, since the server already did the matching.
+    expect(page.content).toHaveLength(2);
+  });
+
+  it('sends the requested order to the server', async () => {
+    reply([]);
+
+    await campaignsApi.listForAdmin({ sort: 'oldest' });
+    expect(urlOf(0)).toContain('sort=oldest');
+  });
+
+  it('omits an empty search box rather than sending a blank term', async () => {
+    reply([]);
+
+    await campaignsApi.listForAdmin({ search: '   ' });
+    expect(urlOf(0)).not.toContain('q=');
   });
 
   it('sends both halves of the dual-approval workflow to their own endpoints', async () => {
@@ -199,7 +276,10 @@ describe('reportsApi', () => {
     reply({ totalScans: 0 });
 
     await reportsApi.platformSummary();
-    expect(urlOf(0)).toBe('http://localhost:8080/api/reports/platform/summary');
+    // Asserted against API_BASE_URL, never a literal host: the base URL is configurable via
+    // VITE_API_BASE_URL (it must be, so a phone can reach the API), so a hardcoded
+    // "localhost:8080" here would fail for anyone using a LAN address.
+    expect(urlOf(0)).toBe(`${API_BASE_URL}/api/reports/platform/summary`);
   });
 
   it('sends an inclusive from/to range when provided', async () => {
@@ -282,6 +362,81 @@ describe('notificationsApi and assignmentsApi', () => {
     const init = fetchMock.mock.calls[0][1] as RequestInit;
     // The restaurant comes from the access token, so it is never client-supplied.
     expect(JSON.parse(init.body as string)).toEqual({ creatorId: 42 });
+  });
+
+  it('sends both ids when an administrator targets any venue', async () => {
+    reply({ id: 1 }, 201);
+
+    await assignmentsApi.assignAsAdmin(7, 42);
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    // Unlike the restaurant route, the admin route must name both sides of the pair.
+    expect(JSON.parse(init.body as string)).toEqual({ restaurantId: 7, creatorId: 42 });
+    expect(urlOf(0)).toContain('/api/admin/assignments');
+  });
+
+  it('reads the admin pickers and the full assignment list', async () => {
+    reply([]);
+
+    await assignmentsApi.listAll();
+    await assignmentsApi.creatorDirectory();
+    await assignmentsApi.restaurantDirectory();
+
+    expect(urlOf(0)).toContain('/api/admin/assignments');
+    expect(urlOf(1)).toContain('/api/admin/creators');
+    expect(urlOf(2)).toContain('/api/admin/restaurants');
+  });
+
+  it('deactivates with DELETE and reactivates via the dedicated route', async () => {
+    reply({ id: 5, active: false });
+
+    await assignmentsApi.deactivateAsAdmin(5);
+    expect(fetchMock.mock.calls[0][1]?.method).toBe('DELETE');
+
+    await assignmentsApi.reactivate(5);
+    expect(urlOf(1)).toContain('/api/admin/assignments/5/reactivate');
+    // Reactivate is a POST: it re-enables a row rather than creating one.
+    expect(fetchMock.mock.calls[1][1]?.method).toBe('POST');
+  });
+});
+
+describe('campaign creation', () => {
+  it('never sends a title — the backend names the campaign from its generated code', async () => {
+    reply({ id: 1, status: 'DRAFT' }, 201);
+
+    await campaignsApi.create({
+      restaurantId: 3,
+      offerText: '10% off',
+      discountPercent: 5,
+      targetCustomers: 25,
+      durationDays: 7,
+      startDate: '2026-10-01',
+      endDate: '2026-10-08',
+    });
+
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body).not.toHaveProperty('title');
+  });
+
+  it('sends the discount, target and duration that the code will encode', async () => {
+    reply({ id: 1, status: 'DRAFT' }, 201);
+
+    await campaignsApi.create({
+      restaurantId: 3,
+      offerText: '10% off',
+      discountPercent: 9,
+      targetCustomers: 25,
+      durationDays: 14,
+      startDate: '2026-10-01',
+      endDate: '2026-10-15',
+    });
+
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    // 25 customers, 14 days and 9% (letter I) are exactly what KT2514I would state.
+    expect(body).toMatchObject({
+      discountPercent: 9,
+      targetCustomers: 25,
+      durationDays: 14,
+    });
   });
 });
 

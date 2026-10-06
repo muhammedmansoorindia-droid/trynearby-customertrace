@@ -16,9 +16,11 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 
 import com.customertrace.domain.Creator;
 import com.customertrace.domain.Restaurant;
+import com.customertrace.domain.RestaurantCreatorAssignment;
 import com.customertrace.domain.Role;
 import com.customertrace.domain.User;
 import com.customertrace.repository.CreatorRepository;
+import com.customertrace.repository.RestaurantCreatorAssignmentRepository;
 import com.customertrace.repository.RestaurantRepository;
 import com.customertrace.repository.RoleRepository;
 import com.customertrace.repository.UserRepository;
@@ -64,6 +66,9 @@ public abstract class ConcurrencyTestBase {
 
     @Autowired
     protected CreatorRepository creatorRepository;
+
+    @Autowired
+    protected RestaurantCreatorAssignmentRepository assignmentRepository;
 
     @Autowired
     protected PasswordEncoder passwordEncoder;
@@ -117,6 +122,35 @@ public abstract class ConcurrencyTestBase {
         creator.setCity("Kochi");
         creator.setFollowers(10_000);
         return creatorRepository.save(creator);
+    }
+
+    /** Grants the creator role with a caller-chosen user id, then assigns them to a restaurant. */
+    protected Creator createCreatorWithId(String userId, String name, String handle,
+                                          Restaurant restaurant) {
+        User user = createUser(userId, "CREATOR", name);
+        Creator creator = new Creator();
+        creator.setUserId(user.getId());
+        creator.setDisplayName(name);
+        creator.setHandle(handle);
+        creator.setCity("Kochi");
+        creator.setFollowers(10_000);
+        creator = creatorRepository.save(creator);
+        assignCreator(creator, restaurant);
+        return creator;
+    }
+
+    /**
+     * Creates an active creator-to-restaurant assignment.
+     *
+     * <p>Campaign creation requires an active assignment, so any fixture that posts a campaign
+     * needs one in place.
+     */
+    protected void assignCreator(Creator creator, Restaurant restaurant) {
+        RestaurantCreatorAssignment assignment = new RestaurantCreatorAssignment();
+        assignment.setRestaurantId(restaurant.getId());
+        assignment.setCreatorId(creator.getId());
+        assignment.setActive(true);
+        assignmentRepository.save(assignment);
     }
 
     protected String tokenFor(User user) {

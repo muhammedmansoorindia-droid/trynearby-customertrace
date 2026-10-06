@@ -60,6 +60,61 @@ export interface Subscription {
   updatedAt: string;
 }
 
+/** A platform subscription as the TryNearby administrator sees it. */
+export interface AdminSubscription {
+  id: number;
+  restaurantId: number;
+  /** Resolved by the backend, so the table never shows a bare id. */
+  restaurantName: string | null;
+  planCode: string | null;
+  planName: string | null;
+  status: 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELLED';
+  billingCycle: string;
+  amountPaise: number;
+  entitled: boolean;
+  renewsAt: string | null;
+}
+
+/** A restaurant as the administrator sees it, with status and workload. */
+export interface RestaurantSummary {
+  id: number;
+  name: string;
+  city: string;
+  region: string | null;
+  status: string;
+  ratingCount: number;
+  /**
+   * Mean rating out of five.
+   *
+   * <p>Omitted entirely by the backend's `non_null` serialisation when there are no ratings, so this
+   * arrives as `undefined` rather than `null`. Check with `== null`, which covers both.
+   */
+  averageRating?: number;
+  subscriptionPlan: string | null;
+  subscriptionStatus: string | null;
+  activeCreatorCount: number;
+  campaignCount: number;
+  userId: string | null;
+}
+
+/** A creator as the administrator sees it, with status and workload. */
+export interface CreatorSummary {
+  id: number;
+  displayName: string;
+  handle: string;
+  city: string | null;
+  niche: string | null;
+  followers: number;
+  verified: boolean;
+  status: string;
+  activeRestaurantCount: number;
+  campaignCount: number;
+  userId: string | null;
+}
+
+/** Statuses the backend accepts for a restaurant or creator profile. */
+export const PROFILE_STATUSES = ['ACTIVE', 'SUSPENDED'] as const;
+
 export interface SubscriptionPlan {
   id: number;
   code: string;
@@ -119,12 +174,46 @@ export interface Assignment {
   assignedBy: number | null;
   createdAt: string;
   updatedAt: string;
+  /** Null when the profile has since been deleted. */
+  restaurantName: string | null;
+  creatorName: string | null;
 }
+
+/** One selectable creator or restaurant for the admin pickers. */
+export interface DirectoryEntry {
+  id: number;
+  name: string;
+  /** Handle, city, or `… · inactive` for a deactivated profile. */
+  subtitle: string;
+}
+
+/**
+ * Platform administration: profile status and subscriptions.
+ *
+ * <p>Every route is administrator-only on the backend, so these calls are for the TryNearby portal.
+ */
+export const adminApi = {
+  restaurants: () => api.get<RestaurantSummary[]>('/api/admin/restaurants'),
+  setRestaurantStatus: (id: number, status: string) =>
+    api.patch<RestaurantSummary>(`/api/admin/restaurants/${id}/status`, { status }),
+  creators: () => api.get<CreatorSummary[]>('/api/admin/creators'),
+  setCreatorStatus: (id: number, status: string) =>
+    api.patch<CreatorSummary>(`/api/admin/creators/${id}/status`, { status }),
+  subscriptions: () => api.get<AdminSubscription[]>('/api/admin/subscriptions'),
+  /** Plan and status changes the restaurant is told about by notification. */
+  changeSubscriptionPlan: (id: number, planId: number) =>
+    api.put<AdminSubscription>(`/api/admin/subscriptions/${id}/plan`, { planId }),
+  changeSubscriptionStatus: (id: number, status: string) =>
+    api.patch<AdminSubscription>(`/api/admin/subscriptions/${id}/status`, { status }),
+};
 
 export const assignmentsApi = {
   listForRestaurant: () => api.get<Assignment[]>('/api/restaurant/assignments'),
   listForCreator: () => api.get<Assignment[]>('/api/creator/assignments'),
   listAll: () => api.get<Assignment[]>('/api/admin/assignments'),
+  /** Administrator pickers; the server refuses these to non-admins. */
+  creatorDirectory: () => api.get<CreatorSummary[]>('/api/admin/creators'),
+  restaurantDirectory: () => api.get<RestaurantSummary[]>('/api/admin/restaurants'),
   /** A restaurant may only ever assign to itself; its id comes from the token. */
   assignAsRestaurant: (creatorId: number) =>
     api.post<Assignment>('/api/restaurant/assignments', { creatorId }),

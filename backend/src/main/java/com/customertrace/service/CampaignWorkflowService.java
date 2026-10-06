@@ -16,6 +16,7 @@ import com.customertrace.domain.Decision;
 import com.customertrace.domain.DecisionParty;
 import com.customertrace.domain.Notification;
 import com.customertrace.domain.PromoCode;
+import com.customertrace.domain.PromoTierLedger;
 import com.customertrace.domain.Restaurant;
 import com.customertrace.exception.ApiErrors;
 import com.customertrace.repository.AuditLogRepository;
@@ -29,6 +30,7 @@ import com.customertrace.repository.PromoTierLedgerRepository;
 import com.customertrace.repository.RestaurantRepository;
 import com.customertrace.repository.UserRepository;
 import com.customertrace.security.CurrentUser;
+import com.customertrace.service.promo.DiscountTiers;
 import com.customertrace.service.promo.PromoCodeGenerator;
 import com.customertrace.web.dto.CampaignDtos;
 
@@ -63,6 +65,7 @@ public class CampaignWorkflowService {
     private final AuditLogRepository auditLogRepository;
     private final RestaurantRepository restaurantRepository;
     private final CreatorRepository creatorRepository;
+    private final AssignmentService assignmentService;
     private final UserRepository userRepository;
     private final PromoCodeGenerator promoCodeGenerator;
     private final EntityManager entityManager;
@@ -76,6 +79,7 @@ public class CampaignWorkflowService {
                                    AuditLogRepository auditLogRepository,
                                    RestaurantRepository restaurantRepository,
                                    CreatorRepository creatorRepository,
+                                   AssignmentService assignmentService,
                                    UserRepository userRepository,
                                    PromoCodeGenerator promoCodeGenerator,
                                    EntityManager entityManager) {
@@ -88,6 +92,7 @@ public class CampaignWorkflowService {
         this.auditLogRepository = auditLogRepository;
         this.restaurantRepository = restaurantRepository;
         this.creatorRepository = creatorRepository;
+        this.assignmentService = assignmentService;
         this.userRepository = userRepository;
         this.promoCodeGenerator = promoCodeGenerator;
         this.entityManager = entityManager;
@@ -101,10 +106,24 @@ public class CampaignWorkflowService {
         Restaurant restaurant = restaurantRepository.findById(request.restaurantId())
                 .orElseThrow(() -> ApiErrors.notFound("Restaurant"));
 
+        // Eligibility: an *active* assignment must exist, re-read from the database rather than
+        // trusted from the client. Without this the assignment would only be a UI convenience —
+        // any creator could post a campaign for any restaurant by calling the endpoint directly,
+        // and deactivating an assignment would not actually stop new campaigns.
+        if (!assignmentService.mayActFor(actor, restaurant.getId())) {
+            throw ApiErrors.forbidden("You are not assigned to this restaurant, so you cannot "
+                    + "run a campaign for it.");
+        }
+
         Campaign campaign = new Campaign();
         campaign.setCreatorId(creator.getId());
         campaign.setRestaurantId(restaurant.getId());
-        campaign.setTitle(request.title());
+        // The title is the generated code, derived from the settings the creator just chose, so
+        // the creator never types a name and the name cannot drift from the settings. The code is
+        // only *issued* on submit so a draft cannot squat a scarce monthly discount, so this draft
+        // title is a preview that the submit replaces with the final unique code.
+        campaign.setTitle(previewName(request.targetCustomers(), request.durationDays(),
+                request.discountPercent()));
         campaign.setDescription(request.description());
         campaign.setOfferText(request.offerText());
         campaign.setDiscountPercent(request.discountPercent());
@@ -121,6 +140,16 @@ public class CampaignWorkflowService {
     }
 
 /**
+     * The draft's provisional code-shaped name, from the same rule that issues the real one.
+     *
+     * <p>Not claimed against the ledger and not checked for uniqueness: a draft is a proposal. The
+     * submit replaces it with a unique, ledger-checked code.
+     */
+    private String previewName(int target, int durationDays, int discountPercent) {
+        return promoCodeGenerator.preview(target, durationDays, discountPercent, null);
+    }
+
+    /**
      * Submits a draft (or a previously rejected campaign) for review.
      *
      * <p>A promo code is generated here because the NN/DD segments derive from the campaign's own
@@ -248,17 +277,22 @@ public class CampaignWorkflowService {
      * so two campaigns cannot claim the same scarce tier.
      */
     private void assignPromoCode(Campaign campaign) {
-        java.time.LocalDate month = campaign.getStartDate().withDayOfMonth(1);
-        String calendarMonth = String.format("%04d-%02d", month.getYear(), month.getMonthValue());
-
         String code = promoCodeGenerator
                 // Explicit lambda: the target is BooleanSupplier, so the char is boxed here.
                 .withCodeExistsChecker(candidate -> promoCodeRepository.existsByCode(candidate))
-                .withExclusiveTierTakenChecker(tier ->
-                        tierLedgerRepository.existsByRestaurantIdAndCalendarMonthAndTierLetter(
-                                campaign.getRestaurantId(), calendarMonth,
-                                String.valueOf((char) tier)))
-                .generate(campaign.getTargetCustomers(), campaign.getDurationDays());
+                .generate(campaign.getTargetCustomers(), campaign.getDurationDays(),
+                        campaign.getDiscountPercent());
+
+        char tier = code.charAt(6);
+
+        // G-J (7%-10%) may back only one campaign per restaurant per calendar month. The claim is
+        // an insert against the ledger's unique key rather than a check-then-insert, so two
+        // simultaneous submissions cannot both pass a read and both succeed. A restricted discount
+        // whose letter is already spent for this month is refused outright — the creator is told to
+        // choose a different discount rather than being silently downgraded.
+        if (promoCodeGenerator.isRestrictedDiscount(tier)) {
+            claimMonthlyDiscount(campaign, tier);
+        }
 
         // A resubmission supersedes the previous code: replace rather than accumulate, so a
         // campaign never carries two codes (the schema allows only one per campaign in practice).
@@ -270,10 +304,45 @@ public class CampaignWorkflowService {
         promo.setCode(code);
         promo.setClientTarget(campaign.getTargetCustomers());
         promo.setDurationDays(campaign.getDurationDays());
-        promo.setTierLetter(String.valueOf(code.charAt(6)));
-        promo.setExclusiveTier(promoCodeGenerator.isExclusiveTier(code.charAt(6)));
+        promo.setTierLetter(String.valueOf(tier));
+        promo.setExclusiveTier(promoCodeGenerator.isRestrictedDiscount(tier));
         promo.setActive(true);
         promoCodeRepository.save(promo);
+
+        // The issued code becomes the campaign's name, so the label a creator and an approver see
+        // is the same code the diner is handed. It is fixed here and never re-derived afterwards.
+        campaign.setTitle(code);
+    }
+
+    /**
+     * Reserves a restricted discount letter for this restaurant and the campaign's calendar month.
+     *
+     * <p>The month comes from the campaign's start date, which is a {@code DATE} column and so
+     * carries no timezone — the same rule the rest of the promo reporting uses.
+     *
+     * <p>Throwing before the code is saved means a refused request consumes nothing: the
+     * transaction rolls back, so the letter stays available for a campaign that does qualify.
+     */
+    private void claimMonthlyDiscount(Campaign campaign, char tier) {
+        java.time.LocalDate month = campaign.getStartDate().withDayOfMonth(1);
+        String calendarMonth = String.format("%04d-%02d", month.getYear(), month.getMonthValue());
+        String letter = String.valueOf(tier);
+
+        // Scoped to the restaurant, not the creator: the cap is a property of the venue, so two
+        // different creators cannot both sell the same high discount there in one month.
+        if (tierLedgerRepository.existsByRestaurantIdAndCalendarMonthAndTierLetter(
+                campaign.getRestaurantId(), calendarMonth, letter)) {
+            throw ApiErrors.conflict("MONTHLY_DISCOUNT_LIMIT",
+                    "The " + DiscountTiers.discountFor(tier) + "% discount (code letter " + letter
+                            + ") has already been used at this restaurant for " + calendarMonth
+                            + ". Each restaurant may run one campaign per high discount per month.");
+        }
+
+        PromoTierLedger entry = new PromoTierLedger();
+        entry.setRestaurantId(campaign.getRestaurantId());
+        entry.setCalendarMonth(calendarMonth);
+        entry.setTierLetter(letter);
+        tierLedgerRepository.saveAndFlush(entry);
     }
 
     /** Loads a campaign only if the authenticated creator owns it. */

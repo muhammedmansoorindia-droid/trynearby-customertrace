@@ -12,9 +12,10 @@ import jakarta.persistence.Table;
 /**
  * A stored refresh-token record.
  *
- * <p>Only the BCrypt {@code tokenHash} is persisted, so a database disclosure does not yield a
- * usable session. {@code familyId} ties a rotation chain together: if a token that was already
- * rotated away is presented again, the whole family is revoked (reuse detection).
+ * <p>Only the SHA-256 {@code tokenHash} is persisted, so a database disclosure does not yield a
+ * usable session — the raw token exists only inside the HttpOnly cookie. {@code familyId} ties a
+ * rotation chain together: if a token that was already rotated away is presented again, the whole
+ * family is revoked (reuse detection).
  */
 @Entity
 @Table(name = "refresh_tokens")

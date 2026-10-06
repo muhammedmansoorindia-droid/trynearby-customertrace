@@ -33,6 +33,153 @@ class AuthIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    @DisplayName("login hands the browser a readable XSRF-TOKEN alongside the HttpOnly cookie")
+    void loginPrimesTheCsrfCookie() throws Exception {
+        createUser("prime@restrnt", "RESTAURANT", "Prime");
+
+        MvcResult result = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"userId":"prime@restrnt","password":"%s","portal":"restaurant"}
+                                """.formatted(TEST_PASSWORD)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        jakarta.servlet.http.Cookie xsrf =
+                result.getResponse().getCookie("XSRF-TOKEN");
+        assertThat(xsrf)
+                .as("the client must have a token to echo, or refresh after a reload 403s")
+                .isNotNull();
+        assertThat(xsrf.isHttpOnly())
+                .as("a JS-unreadable cookie cannot be echoed back in a header")
+                .isFalse();
+
+        jakarta.servlet.http.Cookie refresh =
+                result.getResponse().getCookie("ct_refresh");
+        assertThat(refresh).isNotNull();
+        assertThat(refresh.isHttpOnly())
+                .as("the session credential itself must stay out of reach of scripts")
+                .isTrue();
+    }
+
+    @Test
+    @DisplayName("refresh rotates the cookie and mints a fresh access token")
+    void refreshRotatesTheSession() throws Exception {
+        createUser("rotate@restrnt", "RESTAURANT", "Rotate");
+
+        MvcResult login = loginFor("rotate@restrnt");
+
+        MvcResult refreshed = postWithSessionCookies(login, "/api/auth/refresh")
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertThat(parse(refreshed).path("accessToken").asText())
+                .as("a reload must land the user back in their session, not signed out")
+                .isNotBlank();
+
+        // The rotated cookie keeps the session alive for the next reload. The CSRF cookie was
+        // not reissued, so the client keeps echoing the one it already holds.
+        postWithSessionCookies(refreshed, login, "/api/auth/refresh")
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("refresh without the custom CSRF header is refused")
+    void refreshRequiresTheCustomHeader() throws Exception {
+        createUser("noheader@restrnt", "RESTAURANT", "No Header");
+
+        MvcResult login = loginFor("noheader@restrnt");
+        jakarta.servlet.http.Cookie session = login.getResponse().getCookie("ct_refresh");
+        jakarta.servlet.http.Cookie xsrf = login.getResponse().getCookie("XSRF-TOKEN");
+
+        // The echoed cookie alone is not enough: the header is what distinguishes script that
+        // could read the cookie from a cross-origin request that merely rides on it.
+        mockMvc.perform(post("/api/auth/refresh")
+                        .cookie(session, xsrf)
+                        .header("X-XSRF-TOKEN", xsrf.getValue()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("logout without the custom CSRF header leaves the session alive")
+    void logoutRequiresTheCustomHeader() throws Exception {
+        createUser("nologout@restrnt", "RESTAURANT", "No Logout");
+
+        MvcResult login = loginFor("nologout@restrnt");
+        jakarta.servlet.http.Cookie session = login.getResponse().getCookie("ct_refresh");
+        jakarta.servlet.http.Cookie xsrf = login.getResponse().getCookie("XSRF-TOKEN");
+
+        mockMvc.perform(post("/api/auth/logout")
+                        .cookie(session, xsrf)
+                        .header("X-XSRF-TOKEN", xsrf.getValue()))
+                .andExpect(status().isForbidden());
+
+        postWithSessionCookies(login, "/api/auth/refresh")
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("refresh without the echoed CSRF token is refused")
+    void refreshRequiresTheCsrfEcho() throws Exception {
+        createUser("nocsrf@restrnt", "RESTAURANT", "No Csrf");
+
+        MvcResult login = loginFor("nocsrf@restrnt");
+        jakarta.servlet.http.Cookie session = login.getResponse().getCookie("ct_refresh");
+
+        // The custom header alone is not enough: a cross-origin attacker can set headers it
+        // cannot read the cookie value back from.
+        mockMvc.perform(post("/api/auth/refresh")
+                        .cookie(session)
+                        .header("X-CT-CSRF", "1"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("refresh with a forged CSRF echo is refused")
+    void refreshRejectsAForgedCsrfEcho() throws Exception {
+        createUser("forged@restrnt", "RESTAURANT", "Forged");
+
+        MvcResult login = loginFor("forged@restrnt");
+        jakarta.servlet.http.Cookie session = login.getResponse().getCookie("ct_refresh");
+        jakarta.servlet.http.Cookie xsrf = login.getResponse().getCookie("XSRF-TOKEN");
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .cookie(session, xsrf)
+                        .header("X-CT-CSRF", "1")
+                        .header("X-XSRF-TOKEN", "00000000-0000-0000-0000-000000000000"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("replaying a rotated refresh cookie revokes the session")
+    void rotatedRefreshCookieIsSingleUse() throws Exception {
+        createUser("replay@restrnt", "RESTAURANT", "Replay");
+
+        MvcResult login = loginFor("replay@restrnt");
+        postWithSessionCookies(login, "/api/auth/refresh").andExpect(status().isOk());
+
+        // The original cookie is spent; presenting it again is treated as theft.
+        postWithSessionCookies(login, "/api/auth/refresh")
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("two rotations in the same second still produce distinct sessions")
+    void rotationsWithinTheSameSecondAreDistinct() throws Exception {
+        createUser("fast@restrnt", "RESTAURANT", "Fast");
+
+        MvcResult login = loginFor("fast@restrnt");
+
+        // jti makes each token unique; without it both rows would share a token_hash and the
+        // second insert would trip the unique key, failing the caller with a conflict.
+        MvcResult first = postWithSessionCookies(login, "/api/auth/refresh")
+                .andExpect(status().isOk())
+                .andReturn();
+        postWithSessionCookies(first, login, "/api/auth/refresh")
+                .andExpect(status().isOk());
+    }
+
+    @Test
     @DisplayName("never returns the password or its hash")
     void doesNotLeakCredentials() throws Exception {
         createUser("owner2@restrnt", "RESTAURANT", "Owner Two");

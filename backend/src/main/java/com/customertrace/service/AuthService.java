@@ -25,6 +25,7 @@ import com.customertrace.repository.UserRepository;
 import com.customertrace.security.JwtService;
 import com.customertrace.security.RoleCodes;
 import com.customertrace.security.SecurityProperties;
+import com.customertrace.security.TokenDigest;
 import com.customertrace.web.dto.AuthDtos;
 
 /**
@@ -192,8 +193,8 @@ public class AuthService {
     private void persistRefreshToken(User user, String rawToken, String familyId) {
         RefreshToken entity = new RefreshToken();
         entity.setUserId(user.getId());
-        // Only the hash is stored; the raw token exists solely in the HttpOnly cookie.
-        entity.setTokenHash(passwordEncoder.encode(rawToken));
+        // Only the digest is stored; the raw token exists solely in the HttpOnly cookie.
+        entity.setTokenHash(TokenDigest.of(rawToken));
         entity.setFamilyId(familyId);
         entity.setExpiresAt(Instant.now().plus(securityProperties.getRefreshTokenTtl()));
         refreshTokenRepository.save(entity);
@@ -260,14 +261,12 @@ public class AuthService {
     /**
      * Finds the stored record for a raw refresh token.
      *
-     * <p>BCrypt hashes are salted, so a lookup cannot be an equality match on the hash; the
-     * candidate rows are compared instead. Rotated rows are deliberately retained so a replay
-     * can be detected rather than treated as "unknown".
+     * <p>The digest is deterministic, so this is an indexed equality lookup rather than a scan.
+     * Rotated rows are deliberately retained so a replay is detected rather than reported as
+     * "unknown".
      */
     private Optional<RefreshToken> matchStoredToken(String rawToken) {
-        return refreshTokenRepository.findAll().stream()
-                .filter(t -> passwordEncoder.matches(rawToken, t.getTokenHash()))
-                .findFirst();
+        return refreshTokenRepository.findByTokenHash(TokenDigest.of(rawToken));
     }
 
     /** Revokes the whole refresh-token family, ending the session. */

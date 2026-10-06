@@ -51,10 +51,12 @@ public class RestaurantCampaignController {
     public ResponseEntity<List<CampaignDtos.CampaignResponse>> list(
             @AuthenticationPrincipal CurrentUser actor,
             @RequestParam(required = false) CampaignStatus status,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "NEWEST") String sort,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return ResponseEntity.ok(
-                queries.listForRestaurant(actor, status, PageRequest.of(page, size)));
+        return ResponseEntity.ok(queries.listForRestaurant(actor, status, q,
+                CampaignQueryService.pageOf(page, size, sort)));
     }
 
     @GetMapping("/{id}")

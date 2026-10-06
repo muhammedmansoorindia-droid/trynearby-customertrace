@@ -10,12 +10,14 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 /**
+/**
  * A promo code in {@code LLNNDDX} form: two letters, a two-digit customer cap, a two-digit
- * duration in days, and a tier letter A-J.
+ * duration in days, and a discount letter B-J (B=2% … J=10%).
  *
  * <p>{@code clientTarget} and {@code durationDays} mirror the NN/DD segments so validity and
  * usage limits are checked with an indexed lookup instead of re-parsing on every request.
- * {@code exclusiveTier} is true for E-J, redeemable once per restaurant per calendar month.
+ * {@code exclusiveTier} is true for G-J (7%-10%), which may back at most one campaign per
+ * restaurant per calendar month.
  */
 @Entity
 @Table(name = "promo_codes")

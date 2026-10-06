@@ -17,14 +17,13 @@ import org.junit.jupiter.api.Test;
  */
 class PromoCodeGeneratorTest {
 
-    private PromoCodeGenerator generator(Set<Character> spentTiers, Set<String> takenCodes) {
-        return new PromoCodeGenerator()
-                .withExclusiveTierTakenChecker(spentTiers::contains)
-                .withCodeExistsChecker(takenCodes::contains);
+    /** The generator only needs to know which full codes already exist. */
+    private PromoCodeGenerator generator(Set<String> takenCodes) {
+        return new PromoCodeGenerator().withCodeExistsChecker(takenCodes::contains);
     }
 
     private PromoCodeGenerator plain() {
-        return generator(Set.of(), Set.of());
+        return generator(Set.of());
     }
 
     @Nested
@@ -34,7 +33,7 @@ class PromoCodeGeneratorTest {
         @Test
         @DisplayName("generates a code matching the required shape")
         void generatesWellFormedCode() {
-            String code = plain().generate(50, 7);
+            String code = plain().generate(50, 7, 5);
 
             assertThat(code).matches(PromoCodeGenerator.PROMO_CODE_PATTERN);
             assertThat(code).hasSize(7);
@@ -43,7 +42,7 @@ class PromoCodeGeneratorTest {
         @Test
         @DisplayName("encodes the target in NN and the duration in DD")
         void encodesTargetAndDuration() {
-            String code = plain().generate(42, 17);
+            String code = plain().generate(42, 17, 5);
             ParsedPromoCode parsed = plain().parse(code).orElseThrow();
 
             assertThat(parsed.customerTarget()).isEqualTo(42);
@@ -51,20 +50,21 @@ class PromoCodeGeneratorTest {
         }
 
         @Test
-        @DisplayName("zero-pads single-digit durations so the code stays 7 characters")
-        void padsDuration() {
-            String code = plain().generate(30, 7);
+        @DisplayName("zero-pads single-digit values so the code stays 7 characters")
+        void padsValues() {
+            String code = plain().generate(9, 7, 5);
 
             assertThat(code).hasSize(7);
+            assertThat(code.substring(2, 4)).isEqualTo("09");
             assertThat(code.substring(4, 6)).isEqualTo("07");
         }
 
         @Test
-        @DisplayName("always emits a tier letter in A-J")
+        @DisplayName("always emits a discount letter in B-J")
         void tierAlwaysInRange() {
             for (int i = 0; i < 200; i++) {
-                char tier = plain().generate(20 + (i % 70), 1 + (i % 28)).charAt(6);
-                assertThat(tier).isBetween('A', 'J');
+                char tier = plain().generate(1 + (i % 99), 1 + (i % 99), 2 + (i % 9)).charAt(6);
+                assertThat(tier).isBetween('B', 'J');
             }
         }
 
@@ -73,17 +73,20 @@ class PromoCodeGeneratorTest {
         void parsesAndRejects() {
             PromoCodeGenerator g = plain();
 
-            assertThat(g.parse("AB1203A")).isPresent();
-            assertThat(g.parse("ab1203a")).isPresent(); // case-insensitive
-            assertThat(g.parse("AB1203K")).isEmpty(); // tier beyond J
+            assertThat(g.parse("AB1203B")).isPresent();
+            assertThat(g.parse("ab1203b")).isPresent(); // case-insensitive
+            assertThat(g.parse("AB1203K")).isEmpty(); // discount letter beyond J
+            assertThat(g.parse("AB1203A")).isEmpty(); // A is below the 2% floor
             assertThat(g.parse("AB120")).isEmpty(); // too short
-            assertThat(g.parse("AB1203AB")).isEmpty(); // too long
-            assertThat(g.parse("12003A")).isEmpty(); // digits where letters belong
-            assertThat(g.parse("AB0003A")).isEmpty(); // target below the minimum
-            assertThat(g.parse("AB9931A")).isPresent(); // 99 target / 31 days, both representable
-            assertThat(g.parse("AB9932A")).isEmpty(); // duration above 31
+            assertThat(g.parse("AB1203BB")).isEmpty(); // too long
+            assertThat(g.parse("12003B")).isEmpty(); // digits where letters belong
+            assertThat(g.parse("AB0003B")).isEmpty(); // target below the minimum
+            assertThat(g.parse("AB9999J")).isPresent(); // 99 target / 99 days, both representable
+            assertThat(g.parse("AB9900J")).isEmpty(); // duration of zero days
         }
-@Nested
+    }
+
+    @Nested
     @DisplayName("rejects values that cannot fit two digits")
     class Encodability {
 
@@ -91,26 +94,27 @@ class PromoCodeGeneratorTest {
         @DisplayName("rejects a customer target of 150 rather than truncating it")
         void rejectsLargeTarget() {
             // 150 cannot be represented as NN; silently truncating to 15 would be a data bug.
-            assertThatThrownBy(() -> plain().generate(150, 7))
+            assertThatThrownBy(() -> plain().generate(150, 7, 5))
                     .isInstanceOf(PromoCodeValidationException.class)
-                    .hasMessageContaining("Customer target must be between 10 and 99");
+                    .hasMessageContaining("Customer target must be between 1 and 99");
         }
 
         @Test
-        @DisplayName("rejects targets below the minimum")
-        void rejectsSmallTarget() {
-            assertThatThrownBy(() -> plain().generate(9, 7))
+        @DisplayName("rejects a target of zero, which is not a campaign")
+        void rejectsZeroTarget() {
+            assertThatThrownBy(() -> plain().generate(0, 7, 5))
                     .isInstanceOf(PromoCodeValidationException.class)
                     .hasMessageContaining("Customer target");
         }
 
         @Test
-        @DisplayName("rejects durations outside 1-31")
+        @DisplayName("rejects a duration outside 1-99")
         void rejectsInvalidDuration() {
-            assertThatThrownBy(() -> plain().generate(50, 32))
+            assertThatThrownBy(() -> plain().generate(50, 100, 5))
                     .isInstanceOf(PromoCodeValidationException.class)
-                    .hasMessageContaining("Campaign duration");
-            assertThatThrownBy(() -> plain().generate(50, 0))
+                    .hasMessageContaining("Campaign duration must be between 1 and 99");
+            // A campaign that lasts no days is not a campaign.
+            assertThatThrownBy(() -> plain().generate(50, 0, 5))
                     .isInstanceOf(PromoCodeValidationException.class)
                     .hasMessageContaining("Campaign duration");
         }
@@ -118,67 +122,91 @@ class PromoCodeGeneratorTest {
         @Test
         @DisplayName("accepts the boundary values")
         void acceptsBoundaries() {
-            assertThat(plain().generate(10, 1)).matches(PromoCodeGenerator.PROMO_CODE_PATTERN);
-            assertThat(plain().generate(99, 31)).matches(PromoCodeGenerator.PROMO_CODE_PATTERN);
+            assertThat(plain().generate(1, 1, 2)).matches(PromoCodeGenerator.PROMO_CODE_PATTERN);
+            assertThat(plain().generate(99, 99, 10)).matches(PromoCodeGenerator.PROMO_CODE_PATTERN);
+        }
+
+        @Test
+        @DisplayName("rejects a discount that no single letter can express")
+        void rejectsUnmappableDiscount() {
+            assertThatThrownBy(() -> plain().generate(50, 7, 1))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Discount must be between 2% and 10%");
+            assertThatThrownBy(() -> plain().generate(50, 7, 11))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Discount must be between 2% and 10%");
         }
     }
 
     @Nested
-    @DisplayName("monthly E-J restriction")
-    class MonthlyTiers {
+    @DisplayName("discount letters B-J")
+    class DiscountMapping {
 
         @Test
-        @DisplayName("prefers an exclusive tier while one is available")
-        void prefersExclusiveTier() {
-            // An unused exclusive tier exists, so the code must land on E-J rather than
-            // falling back to the reusable A-D pool. Which exclusive tier is chosen is
-            // intentionally random, so assert the range, not a specific letter.
-            for (int i = 0; i < 100; i++) {
-                char tier = plain().generate(50, 7).charAt(6);
-                assertThat(tier).isBetween('E', 'J');
+        @DisplayName("maps every percentage to exactly the letter the spec requires")
+        void mapsEveryDiscount() {
+            // The whole table, asserted literally so a shifted mapping cannot pass unnoticed.
+            assertThat(DiscountTiers.letterFor(2)).isEqualTo('B');
+            assertThat(DiscountTiers.letterFor(3)).isEqualTo('C');
+            assertThat(DiscountTiers.letterFor(4)).isEqualTo('D');
+            assertThat(DiscountTiers.letterFor(5)).isEqualTo('E');
+            assertThat(DiscountTiers.letterFor(6)).isEqualTo('F');
+            assertThat(DiscountTiers.letterFor(7)).isEqualTo('G');
+            assertThat(DiscountTiers.letterFor(8)).isEqualTo('H');
+            assertThat(DiscountTiers.letterFor(9)).isEqualTo('I');
+            assertThat(DiscountTiers.letterFor(10)).isEqualTo('J');
+        }
+
+        @Test
+        @DisplayName("reads the same percentage back out of each letter")
+        void mapsEveryLetter() {
+            for (int pct = 2; pct <= 10; pct++) {
+                assertThat(DiscountTiers.discountFor(DiscountTiers.letterFor(pct)))
+                        .as("round trip for %d%%", pct)
+                        .isEqualTo(pct);
             }
         }
 
         @Test
-        @DisplayName("eventually uses every exclusive tier when none are spent")
-        void usesTheWholeExclusiveRange() {
-            // Guards against a bug that always picked one letter, which would exhaust the
-            // available exclusive tiers prematurely.
-            Set<Character> seen = new java.util.HashSet<>();
-            for (int i = 0; i < 400; i++) {
-                seen.add(plain().generate(50, 7).charAt(6));
-            }
-            assertThat(seen).containsAll(Set.of('E', 'F', 'G', 'H', 'I', 'J'));
-        }
-
-        @Test
-        @DisplayName("moves off the tiers already spent")
-        void advancesThroughExclusiveTiers() {
-            // With E and F spent, the chosen tier must be a different, unspent one.
-            Set<Character> spent = Set.of('E', 'F');
-            for (int i = 0; i < 100; i++) {
-                char tier = generator(spent, Set.of()).generate(50, 7).charAt(6);
-                assertThat(tier).isBetween('G', 'J');
+        @DisplayName("generates a code ending in the letter the discount demands")
+        void codeEndsWithTheDiscountLetter() {
+            // The rule that matters commercially: a 5% campaign must never produce an F or a G.
+            for (int pct = 2; pct <= 10; pct++) {
+                String code = plain().generate(50, 7, pct);
+                assertThat(code.charAt(6))
+                        .as("discount %d%%", pct)
+                        .isEqualTo(DiscountTiers.letterFor(pct));
+                assertThat(plain().parse(code).orElseThrow().discountPercent())
+                        .isEqualTo(pct);
             }
         }
 
         @Test
-        @DisplayName("falls back to a reusable tier once all six exclusive tiers are spent")
-        void fallsBackToReusableTier() {
-            Set<Character> spent = Set.of('E', 'F', 'G', 'H', 'I', 'J');
-            String code = generator(spent, Set.of()).generate(50, 7);
+        @DisplayName("treats B-F as reusable and G-J as restricted")
+        void classifiesRestrictedLetters() {
+            PromoCodeGenerator g = plain();
 
-            assertThat(code.charAt(6)).isIn('A', 'B', 'C', 'D');
+            for (char letter = 'B'; letter <= 'F'; letter++) {
+                assertThat(g.isReusableDiscount(letter)).as("%c reusable", letter).isTrue();
+                assertThat(g.isRestrictedDiscount(letter)).as("%c restricted", letter).isFalse();
+            }
+            for (char letter = 'G'; letter <= 'J'; letter++) {
+                assertThat(g.isRestrictedDiscount(letter)).as("%c restricted", letter).isTrue();
+                assertThat(g.isReusableDiscount(letter)).as("%c reusable", letter).isFalse();
+            }
         }
 
         @Test
-        @DisplayName("never reuses an exclusive tier already spent this month")
-        void neverReusesSpentExclusiveTier() {
-            Set<Character> spent = Set.of('E', 'F');
-            for (int i = 0; i < 100; i++) {
-                char tier = generator(spent, Set.of()).generate(50, 7).charAt(6);
-                assertThat(tier).isNotIn('E', 'F');
-            }
+        @DisplayName("classifies reusable and restricted on a parsed code too")
+        void classifiesParsedTiers() {
+            PromoCodeGenerator g = plain();
+
+            assertThat(g.parse("AB1203B").orElseThrow().isExclusiveTier()).isFalse();
+            assertThat(g.parse("AB1203F").orElseThrow().isExclusiveTier()).isFalse();
+            assertThat(g.parse("AB1203G").orElseThrow().isExclusiveTier()).isTrue();
+            assertThat(g.parse("AB1203J").orElseThrow().isExclusiveTier()).isTrue();
+            assertThat(g.parse("AB1203B").orElseThrow().isReusableTier()).isTrue();
+            assertThat(g.parse("AB1203J").orElseThrow().isReusableTier()).isFalse();
         }
     }
 
@@ -194,7 +222,7 @@ class PromoCodeGeneratorTest {
             PromoCodeGenerator allTaken = new PromoCodeGenerator()
                     .withCodeExistsChecker(code -> true);
 
-            assertThatThrownBy(() -> allTaken.generate(50, 7))
+            assertThatThrownBy(() -> allTaken.generate(50, 7, 5))
                     .isInstanceOf(PromoCodeValidationException.class)
                     .hasMessageContaining("unique");
         }
@@ -202,22 +230,27 @@ class PromoCodeGeneratorTest {
         @Test
         @DisplayName("does not return a code that already exists")
         void skipsTakenCodes() {
-            String first = plain().generate(50, 7);
-            String second = generator(Set.of(), Set.of(first)).generate(50, 7);
+            String first = plain().generate(50, 7, 5);
+            String second = generator(Set.of(first)).generate(50, 7, 5);
 
             assertThat(second).isNotEqualTo(first);
         }
-    }
-}
 
         @Test
-        @DisplayName("classifies A-D as reusable and E-J as exclusive")
-        void classifiesTiers() {
-            PromoCodeGenerator g = plain();
-
-            assertThat(g.parse("AB1203A").orElseThrow().isExclusiveTier()).isFalse();
-            assertThat(g.parse("AB1203D").orElseThrow().isExclusiveTier()).isFalse();
-            assertThat(g.parse("AB1203E").orElseThrow().isExclusiveTier()).isTrue();
-            assertThat(g.parse("AB1203J").orElseThrow().isExclusiveTier()).isTrue();
+        @DisplayName("re-drawing only changes the letters, never the requested values")
+        void collisionKeepsTheRequestedValues() {
+            // When the first candidate is taken, the retry must keep NN, DD and the discount
+            // letter the caller asked for: silently changing the target or the discount to fit a
+            // free code would mis-sell the offer.
+            Set<String> taken = new java.util.HashSet<>();
+            for (int i = 0; i < 200; i++) {
+                String code = generator(taken).generate(37, 12, 6);
+                taken.add(code);
+                assertThat(code.substring(2, 4)).isEqualTo("37");
+                assertThat(code.substring(4, 6)).isEqualTo("12");
+                assertThat(code.charAt(6)).isEqualTo('F'); // 6%
+            }
+            assertThat(taken).as("every code is distinct").hasSize(200);
         }
     }
+}

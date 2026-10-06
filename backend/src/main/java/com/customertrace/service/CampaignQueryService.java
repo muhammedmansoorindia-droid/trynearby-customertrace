@@ -3,11 +3,13 @@ package com.customertrace.service;
 import java.util.List;
 
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.customertrace.domain.Campaign;
 import com.customertrace.domain.CampaignDecision;
+import com.customertrace.domain.CampaignSort;
 import com.customertrace.domain.CampaignStatus;
 import com.customertrace.domain.Creator;
 import com.customertrace.domain.DecisionParty;
@@ -94,27 +96,81 @@ public class CampaignQueryService {
 
     @Transactional(readOnly = true)
     public List<CampaignDtos.CampaignResponse> listForCreator(CurrentUser actor, CampaignStatus status,
-                                                                PageRequest page) {
+                                                                String term, PageRequest page) {
         Creator creator = creatorRepository.findByUserId(actor.userId())
                 .orElseThrow(() -> ApiErrors.forbidden("This action requires a creator account."));
-        return campaignRepository.search(status, creator.getId(), null, page)
+        return campaignRepository.search(status, creator.getId(), null, blankToNull(term), page)
                 .map(c -> toResponse(c, actor)).getContent();
     }
 
     @Transactional(readOnly = true)
     public List<CampaignDtos.CampaignResponse> listForRestaurant(CurrentUser actor,
                                                                   CampaignStatus status,
+                                                                  String term,
                                                                   PageRequest page) {
         Restaurant restaurant = restaurantRepository.findByUserId(actor.userId())
                 .orElseThrow(() -> ApiErrors.forbidden("This action requires a restaurant account."));
-        return campaignRepository.search(status, null, restaurant.getId(), page)
+        // The restaurant id comes from the token, never from the request, so one venue can never
+        // widen the list to include another's campaigns.
+        return campaignRepository.search(status, null, restaurant.getId(), blankToNull(term), page)
                 .map(c -> toResponse(c, actor)).getContent();
     }
 
     @Transactional(readOnly = true)
-    public List<CampaignDtos.CampaignResponse> listAll(CampaignStatus status, PageRequest page) {
-        return campaignRepository.search(status, null, null, page)
-                .map(c -> toResponse(c, null)).getContent();
+    public List<CampaignDtos.CampaignResponse> listAll(CurrentUser actor, CampaignStatus status,
+                                                      String term, PageRequest page) {
+        // The actor must be threaded through: `canApprove` is computed per caller, so passing null
+        // here would report every campaign as undecidable and silently strip the review queue of
+        // its approval controls. The detail endpoint takes an actor for the same reason.
+        return campaignRepository.search(status, null, null, blankToNull(term), page)
+                .map(c -> toResponse(c, actor)).getContent();
+    }
+    /** An empty search box means "no term", not "match the empty string". */
+    private static String blankToNull(String term) {
+        return term == null || term.isBlank() ? null : term.trim();
+    }
+
+    /**
+     * Resolves the requested order.
+     *
+     * <p>Accepts the value in any case, because {@code ?sort=newest} and {@code ?sort=NEWEST} read
+     * the same to a caller. Spring's default enum binding is case-sensitive and answers an
+     * unrecognised value with a 500, so the conversion is done here instead: an unknown direction is
+     * a client mistake and is reported as a 400.
+     */
+    private static CampaignSort parseSort(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return CampaignSort.NEWEST;
+        }
+        try {
+            return CampaignSort.valueOf(raw.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw ApiErrors.badRequest("UNKNOWN_SORT",
+                    "Sort must be one of " + java.util.Arrays.toString(CampaignSort.values()) + ".");
+        }
+    }
+
+    /**
+     * Builds the page request, applying the caller's chosen order.
+     *
+     * <p>Sorting happens in SQL through the {@code Pageable}, so pagination and ordering cannot
+     * disagree the way they would if a page were sorted after being fetched.
+     *
+     * <p>Exposed to the controllers so all three list endpoints order identically; a list that
+     * silently sorted by something else in one portal would be a genuinely confusing bug.
+     */
+    public static PageRequest pageOf(int page, int size, String sort) {
+        Sort order = switch (parseSort(sort)) {
+            case OLDEST -> Sort.by(Sort.Direction.ASC, "createdAt");
+            case NEWEST -> Sort.by(Sort.Direction.DESC, "createdAt");
+            // The column is `updated_at`; the entity property Spring sorts by is `updatedAt`.
+            case UPDATED -> Sort.by(Sort.Direction.DESC, "updatedAt");
+            case TARGET -> Sort.by(Sort.Direction.DESC, "targetCustomers");
+        };
+        // Deterministic tie-break, so two campaigns created in the same millisecond cannot swap
+        // places between pages and hide one another.
+        return PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100),
+                order.and(Sort.by(Sort.Direction.DESC, "id")));
     }
 
     @Transactional(readOnly = true)

@@ -14,4 +14,10 @@ coverage
 backend/target/
 target/
 *.jar
-!.backend/**/*.jar
+!.backend/**/*.jar*.pptx
+*.pdf
+
+# Presentation files
+*.pptx
+*.ppt
+*.pdf
